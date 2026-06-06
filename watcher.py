@@ -10,8 +10,8 @@ api_id = int(os.environ.get('API_ID', 0))
 api_hash = os.environ.get('API_HASH', 'hash')
 session_string = os.environ.get('TELEGRAM_SESSION', '') # النص المشفر البديل لملف الجلسة
 
-target_bot = '@Put_Bot_Username_Here'     # يوزر بوت التحميل
-second_account = '@Your_Second_Account'   # يوزر حسابك لاستلام التقرير
+target_bot =  -5232399039    # يوزر بوت التحميل
+second_account = '@al_rawl'   # يوزر حسابك لاستلام التقرير
 # ----------------------------------------------------------------------
 
 # تشغيل تليجرام بالنص المشفر آمن 100%
