@@ -5,6 +5,9 @@ on:
     - cron: '*/15 * * * *' # تشغيل كل 15 دقيقة تلقائياً
   workflow_dispatch: # يتيح لك تشغيله يدوياً كأداة للتجربة
 
+permissions:
+  contents: write
+  
 concurrency:
   group: "bot-runner"
   cancel-in-progress: false
