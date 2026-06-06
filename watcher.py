@@ -26,7 +26,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء فحص القنوات الأوتوماتيكي...")
+    print("🚀 بدء فحص القنوات الأوتوماتيكي التدريجي (حد 100 فيديو)...")
 
     downloaded = get_downloaded_links()
     
@@ -34,17 +34,21 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
+    MAX_VIDEOS_PER_RUN = 100  # 💡 تم تعديل الحد الأقصى لـ 100 فيديو في كل 15 دقيقة
 
     for channel_rss in channels:
+        if new_videos_found >= MAX_VIDEOS_PER_RUN:
+            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو) في هذه الدورة. إيقاف مؤقت ذكي لحفظ البيانات...")
+            break
+
         feed = feedparser.parse(channel_rss)
         if not feed.entries: continue
             
-        # 💡 التعديل الجوهري: المرور على كل الفيديوهات من الأقدم للأحدث
         for entry in reversed(feed.entries):
+            if new_videos_found >= MAX_VIDEOS_PER_RUN: break
+                
             video_link = entry.link
-            
-            if video_link in downloaded:
-                continue # الفيديو تم تحميله من قبل، تخطي
+            if video_link in downloaded: continue 
                 
             print(f"🆕 فيديو جديد رصدته: {entry.title}")
             
@@ -83,11 +87,10 @@ async def main():
             except Exception as e:
                 print(f"❌ خطأ: {e}")
             
-            # استراحة بسيطة بين إرسال الفيديوهات لتجنب الحظر
-            await asyncio.sleep(5)
+            await asyncio.sleep(6) # مهلة أمان بين الفيديوهات
 
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ تم تحميل {new_videos_found} فيديو جديد بنجاح.")
+        await client.send_message(second_account, f"✅ دورة ناجحة: تم تحميل {new_videos_found} فيديو، وسيتم استكمال الباقي تلقائياً بعد 15 دقيقة.")
 
 with client:
     client.loop.run_until_complete(main())
