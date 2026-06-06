@@ -5,6 +5,10 @@ on:
     - cron: '*/15 * * * *' # تشغيل كل 15 دقيقة تلقائياً
   workflow_dispatch: # يتيح لك تشغيله يدوياً كأداة للتجربة
 
+concurrency:
+  group: "bot-runner"
+  cancel-in-progress: false
+  
 jobs:
   run-bot:
     runs-on: ubuntu-latest
