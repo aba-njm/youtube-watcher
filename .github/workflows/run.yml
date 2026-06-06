@@ -30,4 +30,10 @@ jobs:
         API_HASH: ${{ secrets.API_HASH }}
         TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
       run: python watcher.py
-
+    - name: Save and Commit History
+      run: |
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        git add history.txt
+        git commit -m "🤖 تحديث سجل الفيديوهات المحملة تلقائياً [skip ci]" || echo "لا توجد تغييرات للحفظ"
+        git push
