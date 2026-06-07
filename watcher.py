@@ -2,7 +2,7 @@ import os
 import asyncio
 import feedparser
 import time
-import re  # مكتبة الريجكس للفحص الذكي للأزرار
+import re  # مكتبة الريجكس المحدثة للفحص الديناميكي
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
@@ -27,7 +27,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء فحص القنوات الأوتوماتيكي التدريجي الذكي والمطور جداً...")
+    print("🚀 بدء فحص القنوات الأوتوماتيكي بنظام صيد الجودة الديناميكي الأعلى...")
 
     downloaded = get_downloaded_links()
     
@@ -43,8 +43,8 @@ async def main():
     # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
     
-    # 🟢 الكلمات المفتاحية المخصصة للنجاح (عدّلها واكتب كلمات بوتك المفضلة هنا)
-    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم', 'تحميل الفيديو']
+    # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
+    success_keywords = ['🈺️']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
@@ -117,58 +117,51 @@ async def main():
                                 is_done = True
                                 break
                             
-                            # 2️⃣ الميزة الجديدة: فحص رسائل النجاح المخصصة النصية
+                            # 2️⃣ فحص رسائل النجاح المخصصة النصية
                             if any(word in msg_text for word in success_keywords):
                                 print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
                                 downloaded_quality = "تلقائي (عبر رسالة البوت)"
-                                has_1080 = True # نعتبرها True هنا حتى لا يزعجك السكربت بإرسالها لنواقص الـ 1080 طالما أنها نجحت بطريقة نصية مخصصة
+                                has_1080 = True 
                                 is_done = True
                                 break
                             
-                            # 3️⃣ فحص أزرار الجودة بدقة واحترافية (إذا أرسلها البوت)
+                            # 3️⃣ 🔥 النظام الجديد: صيد أزرار الجودة واختيار الأعلى ديناميكياً (يدعم 854p وأي جودة أخرى)
                             if message.buttons:
-                                btn_to_click = None
-                                
-                                # الفحص الأول: هل توجد جودة 1080 صريحة؟
+                                resolution_buttons = []
                                 for row in message.buttons:
                                     for btn in row:
-                                        if '1080' in btn.text:
-                                            btn_to_click = btn
-                                            has_1080 = True
-                                            break
-                                    if btn_to_click: break
+                                        # فحص وجود صيغة واضحة مثل 854p أو 1080p
+                                        match_p = re.search(r'(\d+)\s*p', btn.text, re.IGNORECASE)
+                                        # فحص وجود أرقام جودات معروفة ومألوفة بدون حرف الـ p
+                                        match_num = re.search(r'\d+', btn.text)
+                                        
+                                        if match_p:
+                                            res_val = int(match_p.group(1))
+                                        elif match_num and int(match_num.group()) in [144, 240, 360, 480, 576, 720, 854, 1080, 1440, 2160, 4320]:
+                                            res_val = int(match_num.group())
+                                        else:
+                                            continue
+                                        
+                                        # إضافة الجودة المكتشفة مع زرها إلى القائمة المؤقتة
+                                        resolution_buttons.append((res_val, btn))
                                 
-                                # الفحص الثاني: إذا لم يجد 1080، يبحث عن الجودات القياسية الأخرى
-                                if not btn_to_click:
-                                    for q in ['720', '480', '360']:
-                                        for row in message.buttons:
-                                            for btn in row:
-                                                if q in btn.text:
-                                                    btn_to_click = btn
-                                                    break
-                                            if btn_to_click: break
-                                        if btn_to_click: break
-                                
-                                # الفحص الثالث: البحث الذكي بالـ Regex في حال اختلف مسمى الأزرار في البوت
-                                if not btn_to_click:
-                                    for row in message.buttons:
-                                        for btn in row:
-                                            if re.search(r'(10|7|4|3)\d+', btn.text):
-                                                btn_to_click = btn
-                                                if '1080' in btn.text:
-                                                    has_1080 = True
-                                                break
-                                        if btn_to_click: break
-                                
-                                # تنفيذ الضغط في حال العثور على زر الجودة المطلوب
-                                if btn_to_click:
-                                    print(f"✅ تم اختيار الجودة بنجاح: {btn_to_click.text}")
+                                if resolution_buttons:
+                                    # ترتيب الأزرار تنازلياً ليكون الزر ذو الجودة الأعلى في البداية [0]
+                                    resolution_buttons.sort(key=lambda x: x[0], reverse=True)
+                                    highest_res, btn_to_click = resolution_buttons[0]
+                                    
+                                    print(f"🎯 تم العثور على أعلى جودة متاحة واختيارها تلقائياً: {btn_to_click.text} ({highest_res}p)")
                                     await btn_to_click.click()
                                     downloaded_quality = btn_to_click.text
+                                    
+                                    # فحص إذا كانت الجودة المختارة تلبي رغبتك (1080 أو أعلى) لكي لا تذهب للتقرير كـ ناقصة
+                                    if highest_res >= 1080:
+                                        has_1080 = True
+                                        
                                     is_done = True
                                     break
                                 else:
-                                    # حماية ذكية: إذا مرت 40 ثانية وظهرت أزرار ليست لها علاقة بالجودة، يضغط الاحتياطي كخيار أخير
+                                    # حماية ذكية: إذا مرت 40 ثانية وظهرت أزرار ليست لها علاقة بالجودة
                                     if (time.time() - start_time) > 40:
                                         print("ℹ️ لم يتم العثور على زر جودة صريح بعد 40 ثانية، الضغط على أول زر متاح...")
                                         await message.click(0)
@@ -183,8 +176,8 @@ async def main():
                         new_videos_found += 1
 
                         if not has_1080:
-                            # 🚫 إذا لم تتوفر جودة 1080، يتم إضافته للتقرير
-                            print(f"⚠️ الفيديو لا يدعم جودة 1080. تمت إضافته لقائمة التقرير.")
+                            # 🚫 إذا كانت أعلى جودة متاحة أقل من 1080 (مثل 854p أو 720p)، يتم إضافته للتقرير لتنبيهك
+                            print(f"⚠️ الفيديو لا يدعم جودة 1080 (أعلى جودة كانت {downloaded_quality}). تمت إضافته لقائمة التقرير.")
                             missing_1080_videos.append(f"🔗 <b>{entry.title}</b>\n📥 الجودة التي حُمِّل بها: <code>{downloaded_quality}</code>\n{video_link}")
                     
                     # نضغط زر original فقط للفيديوهات العادية السليمة التي لم تخرج برسالة نجاح نصية
