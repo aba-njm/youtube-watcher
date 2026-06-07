@@ -35,7 +35,7 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
-    MAX_VIDEOS_PER_RUN = 1000  # 📈 تم رفع الحد الأقصى إلى 1000 فيديو هنا
+    MAX_VIDEOS_PER_RUN = 800  # 📈 تم رفع الحد الأقصى إلى 1000 فيديو هنا
     
     # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
