@@ -2,7 +2,7 @@ import os
 import asyncio
 import feedparser
 import time
-import re  # مكتبة الريجكس المحدثة للفحص الديناميكي
+import re
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
@@ -27,7 +27,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء فحص القنوات الأوتوماتيكي بنظام صيد الجودة الديناميكي الأعلى...")
+    print("🚀 بدء فحص القنوات بنظام الصيد الصارم والمقاوم للإيموجيات...")
 
     downloaded = get_downloaded_links()
     
@@ -44,11 +44,11 @@ async def main():
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
     
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
-    success_keywords = ['🈺️']
+    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
-            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو) في هذه الدورة. إيقاف مؤقت ذكي...")
+            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو). إيقاف مؤقت ذكي...")
             break
 
         feed = feedparser.parse(channel_rss)
@@ -79,7 +79,7 @@ async def main():
                 is_skipped = False
                 
                 if was_short:
-                    # ⭐ نظام معالجة الـ Shorts (مع مهلة أمان مضافة للبوت)
+                    # ⭐ نظام معالجة الـ Shorts
                     print("⚡ هذا الرابط فيديو قصير (Shorts)، بانتظار استجابة البوت الأولى...")
                     while (time.time() - start_time) < 30:
                         await asyncio.sleep(2)
@@ -90,14 +90,13 @@ async def main():
                         if is_done: break
                     
                     if is_done:
-                        # ⏱️ حظر أمان إضافي لحل مشكلة السرعة: ننتظر 12 ثانية كاملة ليعالج البوت الـ Short براحته
-                        print("⏳ الانتظار 12 ثانية للتأكد من استيعاب البوت وتحميل الـ Short بنجاح...")
+                        print("⏳ الانتظار 12 ثانية للتأكد من تحميل الـ Short بنجاح...")
                         await asyncio.sleep(12)
                         save_to_history(video_link)
                         new_videos_found += 1
                         
                 else:
-                    # ⭐ نظام معالجة الفيديو العادي المطور وفحص جودة 1080 والرسائل النصية
+                    # ⭐ نظام معالجة الفيديو العادي الذكي جداً ضد الإيموجيات
                     has_1080 = False
                     downloaded_quality = "تلقائية / غير معروفة"
                     
@@ -111,7 +110,7 @@ async def main():
                             # 1️⃣ فحص رسائل الفشل والتعطيل أولاً لتجنب تعليق السكربت
                             if any(word in msg_text for word in error_keywords):
                                 print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
-                                save_to_history(video_link) # حفظه لتجنب تكرار فحص رابط معطوب مستقبلاً
+                                save_to_history(video_link)
                                 new_videos_found += 1
                                 is_skipped = True
                                 is_done = True
@@ -125,45 +124,51 @@ async def main():
                                 is_done = True
                                 break
                             
-                            # 3️⃣ 🔥 النظام الجديد: صيد أزرار الجودة واختيار الأعلى ديناميكياً (يدعم 854p وأي جودة أخرى)
+                            # 3️⃣ 🔥 النظام الجديد والمضمون: كسر حماية الإيموجيات وصيد الجودة الأعلى مباشرة
                             if message.buttons:
                                 resolution_buttons = []
+                                # قائمة الجودات القياسية مرتبة من الأعلى للأقل لضمان الدقة
+                                known_resolutions = ['4320', '2160', '1440', '1080', '854', '720', '576', '480', '360', '240', '144']
+                                
                                 for row in message.buttons:
                                     for btn in row:
-                                        # فحص وجود صيغة واضحة مثل 854p أو 1080p
-                                        match_p = re.search(r'(\d+)\s*p', btn.text, re.IGNORECASE)
-                                        # فحص وجود أرقام جودات معروفة ومألوفة بدون حرف الـ p
-                                        match_num = re.search(r'\d+', btn.text)
+                                        btn_text = btn.text if btn.text else ""
                                         
-                                        if match_p:
-                                            res_val = int(match_p.group(1))
-                                        elif match_num and int(match_num.group()) in [144, 240, 360, 480, 576, 720, 854, 1080, 1440, 2160, 4320]:
-                                            res_val = int(match_num.group())
-                                        else:
-                                            continue
+                                        # الفحص السحري: هل يحتوي نص الزر (مهما كان فيه إيموجيات أو أحرف) على أحد هذه الأرقام؟
+                                        detected_res = None
+                                        for res in known_resolutions:
+                                            if res in btn_text:
+                                                detected_res = int(res)
+                                                break # التقطنا الرقم الحقيقي بنجاح وتخطينا الإيموجي والـ p
                                         
-                                        # إضافة الجودة المكتشفة مع زرها إلى القائمة المؤقتة
-                                        resolution_buttons.append((res_val, btn))
+                                        # خيار احتياطي مضاف: إذا لم يجد رقم قياسي، يبحث عن أي رقم ملتصق بحرف p
+                                        if not detected_res:
+                                            match_p = re.search(r'(\d+)\s*[pP]', btn_text)
+                                            if match_p:
+                                                detected_res = int(match_p.group(1))
+                                        
+                                        # إذا تأكدنا من جودة الزر نضعه في قائمة التصفية
+                                        if detected_res:
+                                            resolution_buttons.append((detected_res, btn))
                                 
                                 if resolution_buttons:
-                                    # ترتيب الأزرار تنازلياً ليكون الزر ذو الجودة الأعلى في البداية [0]
+                                    # ترتيب الأزرار المكتشفة تنازلياً لاختيار الأعلى قيمة فوراً
                                     resolution_buttons.sort(key=lambda x: x[0], reverse=True)
                                     highest_res, btn_to_click = resolution_buttons[0]
                                     
-                                    print(f"🎯 تم العثور على أعلى جودة متاحة واختيارها تلقائياً: {btn_to_click.text} ({highest_res}p)")
+                                    print(f"🎯 تم صيد أعلى جودة مكتشفة بنجاح واختيارها: {btn_to_click.text} ({highest_res}p)")
                                     await btn_to_click.click()
                                     downloaded_quality = btn_to_click.text
                                     
-                                    # فحص إذا كانت الجودة المختارة تلبي رغبتك (1080 أو أعلى) لكي لا تذهب للتقرير كـ ناقصة
                                     if highest_res >= 1080:
                                         has_1080 = True
                                         
                                     is_done = True
                                     break
                                 else:
-                                    # حماية ذكية: إذا مرت 40 ثانية وظهرت أزرار ليست لها علاقة بالجودة
+                                    # حماية احتياطية بعد 40 ثانية
                                     if (time.time() - start_time) > 40:
-                                        print("ℹ️ لم يتم العثور على زر جودة صريح بعد 40 ثانية، الضغط على أول زر متاح...")
+                                        print("ℹ️ لم يتم العثور على زر جودة صريح، الضغط على أول زر متاح...")
                                         await message.click(0)
                                         downloaded_quality = "تلقائي (أول زر متاح)"
                                         is_done = True
@@ -171,16 +176,14 @@ async def main():
                         if is_done: break
 
                     if is_done and not is_skipped:
-                        # ✅ حفظ الفيديو الناجح في الـ history لمنع التكرار
                         save_to_history(video_link)
                         new_videos_found += 1
 
                         if not has_1080:
-                            # 🚫 إذا كانت أعلى جودة متاحة أقل من 1080 (مثل 854p أو 720p)، يتم إضافته للتقرير لتنبيهك
-                            print(f"⚠️ الفيديو لا يدعم جودة 1080 (أعلى جودة كانت {downloaded_quality}). تمت إضافته لقائمة التقرير.")
+                            print(f"⚠️ الفيديو لا يدعم جودة 1080 (أعلى جودة مضغوطة: {downloaded_quality}). تمت إضافته لقائمة التقرير.")
                             missing_1080_videos.append(f"🔗 <b>{entry.title}</b>\n📥 الجودة التي حُمِّل بها: <code>{downloaded_quality}</code>\n{video_link}")
                     
-                    # نضغط زر original فقط للفيديوهات العادية السليمة التي لم تخرج برسالة نجاح نصية
+                    # نضغط زر original فقط للفيديوهات العادية السليمة
                     if is_done and not is_skipped and not was_short and "رسالة" not in downloaded_quality:
                         print("⏳ الانتظار للتأكد من ظهور خيارات الصوت (Original)...")
                         await asyncio.sleep(6)
@@ -199,14 +202,13 @@ async def main():
             except Exception as e:
                 print(f"❌ خطأ: {e}")
             
-            await asyncio.sleep(6) # مهلة أمان بين الفيديوهات الرئيسية
+            await asyncio.sleep(6)
 
     # 📊 إرسال التقارير النهائية للحساب الثاني
     if new_videos_found > 0:
         await client.send_message(second_account, f"✅ دورة ناجحة: تم معالجة {new_videos_found} فيديو واستقرار كامل للنظام.")
 
     if missing_1080_videos:
-        # تنسيق رسالة النواقص بشكل احترافي ومقروء
         report_header = "⚠️ <b>فيديوهات لم تتوفر بجودة 1080 في البوت الحالي (تم حفظها في السجل لعدم التكرار):</b>\n(يمكنك نسخها وإرسالها للبوت البديل بجودة أعلى)\n\n"
         report_body = "\n\n".join(missing_1080_videos)
         
