@@ -40,7 +40,7 @@ async def main():
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
     
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
-    success_keywords = ['1252']
+    success_keywords = ['1252'  ,'@syt_robot orqali yuklab olindi']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
