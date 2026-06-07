@@ -26,7 +26,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء فحص القنوات بنظام الاستهداف الصريح لجودة 854p📹...")
+    print("🚀 بدء التشغيل: تم دمج نظام الفيديوهات والـ Shorts معاً للضغط الإجباري على الأزرار...")
 
     downloaded = get_downloaded_links()
     
@@ -54,8 +54,8 @@ async def main():
             if new_videos_found >= MAX_VIDEOS_PER_RUN: break
                 
             original_link = entry.link
-            was_short = 'shorts' in original_link.lower()
             
+            # 🔄 توحيد وتحويل روابط Shorts برمجياً إلى روابط عادية لضمان قبول البوت
             video_link = original_link
             if '/shorts/' in video_link:
                 video_link = video_link.replace('?', '&').replace('/shorts/', '/watch?v=')
@@ -69,112 +69,90 @@ async def main():
                 start_time = time.time()
                 is_done = False
                 is_skipped = False
+                downloaded_quality = "غير معروفة"
                 
-                if was_short:
-                    # ⭐ نظام معالجة الـ Shorts
-                    print("⚡ هذا الرابط فيديو قصير (Shorts)، بانتظار استجابة البوت الأولى...")
-                    while (time.time() - start_time) < 30:
-                        await asyncio.sleep(2)
-                        async for message in client.iter_messages(target_bot, limit=3):
-                            if message.id <= sent_msg.id: continue
+                # 🔥 نظام فحص موحد وصارم لجميع الروابط بدون أي تخطي تلقائي
+                while (time.time() - start_time) < 90:
+                    await asyncio.sleep(2)
+                    async for message in client.iter_messages(target_bot, limit=5):
+                        if message.id <= sent_msg.id: continue
+                        
+                        msg_text = message.text.lower() if message.text else ""
+                        
+                        # 1️⃣ فحص رسائل الفشل
+                        if any(word in msg_text for word in error_keywords):
+                            print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
+                            save_to_history(video_link)
+                            new_videos_found += 1
+                            is_skipped = True
                             is_done = True
                             break
-                        if is_done: break
-                    
-                    if is_done:
-                        print("⏳ الانتظار 12 ثانية للتأكد من تحميل الـ Short بنجاح...")
-                        await asyncio.sleep(12)
-                        save_to_history(video_link)
-                        new_videos_found += 1
                         
-                else:
-                    # ⭐ نظام معالجة الفيديو العادي (استهداف 854p📹 الصارم)
-                    downloaded_quality = "غير معروفة"
-                    
-                    while (time.time() - start_time) < 90:
-                        await asyncio.sleep(2)
-                        async for message in client.iter_messages(target_bot, limit=5):
-                            if message.id <= sent_msg.id: continue
+                        # 2️⃣ فحص رسائل النجاح النصية
+                        if any(word in msg_text for word in success_keywords):
+                            print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
+                            is_done = True
+                            break
+                        
+                        # 3️⃣ 🎯 نظام القنص المباشر لزر جودة 854p📹 (سيعمل على الفيديوهات والـ Shorts بدون تفرقة)
+                        if message.buttons:
+                            btn_target = None
                             
-                            msg_text = message.text.lower() if message.text else ""
+                            for row in message.buttons:
+                                for btn in row:
+                                    btn_text = btn.text if btn.text else ""
+                                    
+                                    # التفتيش على مسمى الجودة المطلوبة
+                                    if "854p" in btn_text or "854" in btn_text:
+                                        btn_target = btn
+                                        break
+                                if btn_target: break
                             
-                            # 1️⃣ فحص رسائل الفشل
-                            if any(word in msg_text for word in error_keywords):
-                                print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
-                                save_to_history(video_link)
-                                new_videos_found += 1
-                                is_skipped = True
+                            # الضغط الفوري عند العثور على الزر
+                            if btn_target:
+                                print(f"✅ تم العثور على زر الجودة المطلوبة وضغطه: ({btn_target.text})")
+                                await btn_target.click()
+                                downloaded_quality = btn_target.text
                                 is_done = True
                                 break
                             
-                            # 2️⃣ فحص رسائل النجاح النصية
-                            if any(word in msg_text for word in success_keywords):
-                                print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
+                            # حماية احتياطية: إذا مرت 40 ثانية وظهرت أزرار أخرى ولم نجد زر 854، يضغط الزر الأول
+                            if (time.time() - start_time) > 40:
+                                print("ℹ️ مرت 40 ثانية ولم نجد زر 854، الضغط على أول زر متاح تفادياً للتعليق...")
+                                await message.click(0)
+                                downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
                                 is_done = True
                                 break
                             
-                            # 3️⃣ 🔥 نظام القنص المباشر لزر جودة 854p📹
-                            if message.buttons:
-                                btn_target = None
-                                
-                                # التفتيش بداخل كل الأزرار المتاحة
-                                for row in message.buttons:
-                                    for btn in row:
-                                        btn_text = btn.text if btn.text else ""
-                                        
-                                        # فحص دقيق: هل النص يحتوي على "854p📹" أو "854"؟
-                                        if "854p📹" in btn_text or "854" in btn_text:
-                                            btn_target = btn
-                                            break
-                                    if btn_target: break
-                                
-                                # إذا وجدنا زر الـ 854 نضغط عليه فوراً وننهي البحث لهذا الفيديو
-                                if btn_target:
-                                    print(f"🎯 رصدت زر الجودة المطلوب وضغطته فوراً: ({btn_target.text})")
-                                    await btn_target.click()
-                                    downloaded_quality = btn_target.text
-                                    is_done = True
-                                    break
-                                
-                                # حماية ذكية احتياطية: إذا مرت 45 ثانية ولم يظهر زر 854 (ربما فيديو قديم لا يدعمه)، يضغط أول زر متاح لكي لا يعلق السكربت
-                                if (time.time() - start_time) > 45:
-                                    print("ℹ️ مرت 45 ثانية ولم نجد زر 854، الضغط على أول زر متاح لحماية الدورة...")
-                                    await message.click(0)
-                                    downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
-                                    is_done = True
-                                    break
-                                
-                        if is_done: break
+                    if is_done: break
 
-                    if is_done and not is_skipped:
-                        save_to_history(video_link)
-                        new_videos_found += 1
-                        print(f"✅ تم حفظ الفيديو بنجاح في السجل بجودة: {downloaded_quality}")
+                if is_done and not is_skipped:
+                    save_to_history(video_link)
+                    new_videos_found += 1
+                    print(f"💾 تم حفظ الرابط بنجاح في السجل بعد التفاعل بجودة: {downloaded_quality}")
                     
-                    # نضغط زر original فقط للفيديوهات العادية السليمة
-                    if is_done and not is_skipped and not was_short:
-                        print("⏳ الانتظار 5 ثواني للتأكد من ظهور خيارات الصوت (Original)...")
-                        await asyncio.sleep(5)
-                        async for m in client.iter_messages(target_bot, limit=3):
-                            if m.buttons:
-                                audio_pressed = False
-                                for row in m.buttons:
-                                    for btn in row:
-                                        if 'original' in btn.text.lower():
-                                            print(f"🎵 تم اختيار الصوت الأصلي: {btn.text}")
-                                            await btn.click()
-                                            audio_pressed = True
-                                            break
-                                    if audio_pressed: break
+                    # الضغط على زر الصوت الأصلي الاحتياطي بعد معالجة الأزرار بنجاح
+                    print("⏳ الانتظار 5 ثواني للتأكد من ظهور خيارات الصوت (Original)...")
+                    await asyncio.sleep(5)
+                    async for m in client.iter_messages(target_bot, limit=3):
+                        if m.buttons:
+                            audio_pressed = False
+                            for row in m.buttons:
+                                for btn in row:
+                                    if 'original' in btn.text.lower():
+                                        print(f"🎵 تم اختيار الصوت الأصلي: {btn.text}")
+                                        await btn.click()
+                                        audio_pressed = True
+                                        break
                                 if audio_pressed: break
+                            if audio_pressed: break
             except Exception as e:
-                print(f"❌ خطأ: {e}")
+                print(f"❌ خطأ أثناء معالجة الرابط: {e}")
             
-            await asyncio.sleep(6)
+            await asyncio.sleep(6) # مهلة أمان بين الفيديوهات
 
-    # 📊 إرسال التقارير النهائية للحساب الثاني
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ دورة ناجحة: تم معالجة {new_videos_found} فيديو بنظام الاستهداف الصارم والمباشر للجودة المحددة.")
+        await client.send_message(second_account, f"✅ دورة موحدة ناجحة: تم معالجة {new_videos_found} فيديو وقصير (Shorts) بنجاح كامل وضغط أزرار مستقر.")
 
 with client:
     client.loop.run_until_complete(main())
