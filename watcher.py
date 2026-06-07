@@ -2,6 +2,7 @@ import os
 import asyncio
 import feedparser
 import time
+import re  # مكتبة الريجكس لاستخراج الأرقام الصافية من الأزرار
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
@@ -26,7 +27,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء التشغيل: تم دمج نظام الفيديوهات والـ Shorts معاً للضغط الإجباري على الأزرار...")
+    print("🚀 بدء التشغيل الفائق: فحص ذكي وبحد أقصى 1000 فيديو مع صيد أعلى رقم جودة حقيقي...")
 
     downloaded = get_downloaded_links()
     
@@ -34,17 +35,17 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
-    MAX_VIDEOS_PER_RUN = 100 
+    MAX_VIDEOS_PER_RUN = 1000  # 📈 تم رفع الحد الأقصى إلى 1000 فيديو هنا
     
     # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
     
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
-    success_keywords = ['1252'  ,'@syt_robot orqali yuklab olindi']
+    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
-            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو). إيقاف مؤقت...")
+            print(f"⚠️ تم الوصول للحد الأقصى الجديد ({MAX_VIDEOS_PER_RUN} فيديو). إيقاف مؤقت...")
             break
 
         feed = feedparser.parse(channel_rss)
@@ -71,7 +72,6 @@ async def main():
                 is_skipped = False
                 downloaded_quality = "غير معروفة"
                 
-                # 🔥 نظام فحص موحد وصارم لجميع الروابط بدون أي تخطي تلقائي
                 while (time.time() - start_time) < 90:
                     await asyncio.sleep(2)
                     async for message in client.iter_messages(target_bot, limit=5):
@@ -94,31 +94,41 @@ async def main():
                             is_done = True
                             break
                         
-                        # 3️⃣ 🎯 نظام القنص المباشر لزر جودة 854p📹 (سيعمل على الفيديوهات والـ Shorts بدون تفرقة)
+                        # 3️⃣ 🔥 نظام الفحص المباشر (Substring Match) وصيد أعلى رقم جودة حقيقي
                         if message.buttons:
-                            btn_target = None
+                            detected_buttons = []
+                            
+                            # قائمة بالجودات المتعارف عليها للتحقق من الأرقام المستخرجة بدقة
+                            valid_resolutions = [144, 240, 360, 480, 576, 720, 854, 1080, 1440, 2160, 4320]
                             
                             for row in message.buttons:
                                 for btn in row:
                                     btn_text = btn.text if btn.text else ""
                                     
-                                    # التفتيش على مسمى الجودة المطلوبة
-                                    if "854p" in btn_text or "854" in btn_text:
-                                        btn_target = btn
-                                        break
-                                if btn_target: break
+                                    # استخراج كافة الأرقام الصافية المتواجدة داخل نص الزر وتجاهل أي إيموجي أو أحرف
+                                    numbers_in_btn = re.findall(r'\d+', btn_text)
+                                    
+                                    for num_str in numbers_in_btn:
+                                        num_val = int(num_str)
+                                        # التأكد من أن الرقم المستخرج يمثل جودة حقيقية وليس رقماً عشوائياً أو ترتيبياً مثل (1)
+                                        if num_val in valid_resolutions:
+                                            detected_buttons.append((num_val, btn))
                             
-                            # الضغط الفوري عند العثور على الزر
-                            if btn_target:
-                                print(f"✅ تم العثور على زر الجودة المطلوبة وضغطه: ({btn_target.text})")
-                                await btn_target.click()
-                                downloaded_quality = btn_target.text
+                            # إذا تم العثور على أزرار جودة مطابقة
+                            if detected_buttons:
+                                # ترتيب الأزرار تنازلياً للحصول على أعلى رقم في المقدمة [0]
+                                detected_buttons.sort(key=lambda x: x[0], reverse=True)
+                                highest_res, btn_to_click = detected_buttons[0]
+                                
+                                print(f"🎯 تم صيد أعلى رقم جودة متاح حقيقياً وضغطه: ({btn_to_click.text}) -> الجودة المعتمدة: {highest_res}p")
+                                await btn_to_click.click()
+                                downloaded_quality = f"{highest_res}p"
                                 is_done = True
                                 break
                             
-                            # حماية احتياطية: إذا مرت 40 ثانية وظهرت أزرار أخرى ولم نجد زر 854، يضغط الزر الأول
+                            # حماية احتياطية: إذا مرت 40 ثانية وظهرت أزرار أخرى ولم يتم استخراج رقم جودة قياسي، يضغط الزر الأول
                             if (time.time() - start_time) > 40:
-                                print("ℹ️ مرت 40 ثانية ولم نجد زر 854، الضغط على أول زر متاح تفادياً للتعليق...")
+                                print("ℹ️ مرت 40 ثانية ولم نحدد رقم جودة حقيقي صريح، الضغط على أول زر متاح احتياطياً...")
                                 await message.click(0)
                                 downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
                                 is_done = True
@@ -152,7 +162,7 @@ async def main():
             await asyncio.sleep(6) # مهلة أمان بين الفيديوهات
 
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ دورة موحدة ناجحة: تم معالجة {new_videos_found} فيديو وقصير (Shorts) بنجاح كامل وضغط أزرار مستقر.")
+        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم معالجة {new_videos_found} فيديو (الحد الأقصى 1000) مع تصفية ذكية لأعلى أرقام الجودات.")
 
 with client:
     client.loop.run_until_complete(main())
