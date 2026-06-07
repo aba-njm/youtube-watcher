@@ -2,6 +2,7 @@ import os
 import asyncio
 import feedparser
 import time
+import re  # مكتبة الريجكس للفحص الذكي للأزرار
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
@@ -26,7 +27,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء فحص القنوات الأوتوماتيكي التدريجي الذكي...")
+    print("🚀 بدء فحص القنوات الأوتوماتيكي التدريجي الذكي والمطور جداً...")
 
     downloaded = get_downloaded_links()
     
@@ -38,10 +39,16 @@ async def main():
     
     # 📝 قائمة لجمع الفيديوهات التي لا تدعم جودة 1080 في البوت الحالي
     missing_1080_videos = []
+    
+    # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
+    error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
+    
+    # 🟢 الكلمات المفتاحية المخصصة للنجاح (عدّلها واكتب كلمات بوتك المفضلة هنا)
+    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم', 'تحميل الفيديو']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
-            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو) in هذه الدورة. إيقاف مؤقت ذكي...")
+            print(f"⚠️ تم الوصول للحد الأقصى ({MAX_VIDEOS_PER_RUN} فيديو) في هذه الدورة. إيقاف مؤقت ذكي...")
             break
 
         feed = feedparser.parse(channel_rss)
@@ -63,12 +70,13 @@ async def main():
             # الفحص في السجل يتم بالرابط المعدّل النهائي لمنع التكرار تماماً
             if video_link in downloaded: continue 
                 
-            print(f"🆕 محتوى جديد رصدته: {entry.title}")
+            print(f"\n🆕 محتوى جديد رصدته: {entry.title}")
             
             try:
                 sent_msg = await client.send_message(target_bot, video_link)
                 start_time = time.time()
                 is_done = False
+                is_skipped = False
                 
                 if was_short:
                     # ⭐ نظام معالجة الـ Shorts (مع مهلة أمان مضافة للبوت)
@@ -89,67 +97,112 @@ async def main():
                         new_videos_found += 1
                         
                 else:
-                    # ⭐ نظام معالجة الفيديو العادي وفحص جودة 1080
+                    # ⭐ نظام معالجة الفيديو العادي المطور وفحص جودة 1080 والرسائل النصية
                     has_1080 = False
-                    downloaded_quality = "تلقائية / غير معروفة" # جودة افتراضية في حال لم نلتقط اسم الزر
+                    downloaded_quality = "تلقائية / غير معروفة"
                     
                     while (time.time() - start_time) < 90:
                         await asyncio.sleep(2)
                         async for message in client.iter_messages(target_bot, limit=5):
                             if message.id <= sent_msg.id: continue
                             
+                            msg_text = message.text.lower() if message.text else ""
+                            
+                            # 1️⃣ فحص رسائل الفشل والتعطيل أولاً لتجنب تعليق السكربت
+                            if any(word in msg_text for word in error_keywords):
+                                print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
+                                save_to_history(video_link) # حفظه لتجنب تكرار فحص رابط معطوب مستقبلاً
+                                new_videos_found += 1
+                                is_skipped = True
+                                is_done = True
+                                break
+                            
+                            # 2️⃣ الميزة الجديدة: فحص رسائل النجاح المخصصة النصية
+                            if any(word in msg_text for word in success_keywords):
+                                print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
+                                downloaded_quality = "تلقائي (عبر رسالة البوت)"
+                                has_1080 = True # نعتبرها True هنا حتى لا يزعجك السكربت بإرسالها لنواقص الـ 1080 طالما أنها نجحت بطريقة نصية مخصصة
+                                is_done = True
+                                break
+                            
+                            # 3️⃣ فحص أزرار الجودة بدقة واحترافية (إذا أرسلها البوت)
                             if message.buttons:
-                                pressed = False
-                                # 🔍 الفحص الأول: هل توجد جودة 1080؟
+                                btn_to_click = None
+                                
+                                # الفحص الأول: هل توجد جودة 1080 صريحة؟
                                 for row in message.buttons:
                                     for btn in row:
                                         if '1080' in btn.text:
-                                            await btn.click()
+                                            btn_to_click = btn
                                             has_1080 = True
-                                            pressed = True
-                                            downloaded_quality = btn.text
                                             break
-                                    if pressed: break
+                                    if btn_to_click: break
                                 
-                                # 🔍 إذا لم يجد 1080، يضغط على أول جودة متاحة (720، 480 الخ) ويحفظ اسم الجودة
-                                if not pressed:
+                                # الفحص الثاني: إذا لم يجد 1080، يبحث عن الجودات القياسية الأخرى
+                                if not btn_to_click:
+                                    for q in ['720', '480', '360']:
+                                        for row in message.buttons:
+                                            for btn in row:
+                                                if q in btn.text:
+                                                    btn_to_click = btn
+                                                    break
+                                            if btn_to_click: break
+                                        if btn_to_click: break
+                                
+                                # الفحص الثالث: البحث الذكي بالـ Regex في حال اختلف مسمى الأزرار في البوت
+                                if not btn_to_click:
                                     for row in message.buttons:
                                         for btn in row:
-                                            if any(q in btn.text for q in ['720', '480', '360']):
-                                                await btn.click()
-                                                downloaded_quality = btn.text
-                                                pressed = True
+                                            if re.search(r'(10|7|4|3)\d+', btn.text):
+                                                btn_to_click = btn
+                                                if '1080' in btn.text:
+                                                    has_1080 = True
                                                 break
-                                        if pressed: break
+                                        if btn_to_click: break
                                 
-                                if not pressed: 
-                                    await message.click(0) # ضغطة احتياطية لأي زر متاح
-                                    downloaded_quality = "تلقائي (أول زر متاح)"
-                                    
-                                is_done = True
-                                break
+                                # تنفيذ الضغط في حال العثور على زر الجودة المطلوب
+                                if btn_to_click:
+                                    print(f"✅ تم اختيار الجودة بنجاح: {btn_to_click.text}")
+                                    await btn_to_click.click()
+                                    downloaded_quality = btn_to_click.text
+                                    is_done = True
+                                    break
+                                else:
+                                    # حماية ذكية: إذا مرت 40 ثانية وظهرت أزرار ليست لها علاقة بالجودة، يضغط الاحتياطي كخيار أخير
+                                    if (time.time() - start_time) > 40:
+                                        print("ℹ️ لم يتم العثور على زر جودة صريح بعد 40 ثانية، الضغط على أول زر متاح...")
+                                        await message.click(0)
+                                        downloaded_quality = "تلقائي (أول زر متاح)"
+                                        is_done = True
+                                        break
                         if is_done: break
 
-                    if is_done:
-                        # ✅ حفظ الفيديو في الـ history في الحالتين لمنع التكرار
+                    if is_done and not is_skipped:
+                        # ✅ حفظ الفيديو الناجح في الـ history لمنع التكرار
                         save_to_history(video_link)
                         new_videos_found += 1
 
                         if not has_1080:
-                            # 🚫 إذا لم تتوفر جودة 1080، يتم إضافته للتقرير مع توضيح الجودة التي سُحب بها حالياً
-                            print(f"⚠️ الفيديو لا يدعم جودة 1080 في هذا البوت! تمت إضافته لقائمة التقرير مع جودته المتاحة.")
+                            # 🚫 إذا لم تتوفر جودة 1080، يتم إضافته للتقرير
+                            print(f"⚠️ الفيديو لا يدعم جودة 1080. تمت إضافته لقائمة التقرير.")
                             missing_1080_videos.append(f"🔗 <b>{entry.title}</b>\n📥 الجودة التي حُمِّل بها: <code>{downloaded_quality}</code>\n{video_link}")
                     
-                    # نضغط زر original فقط للفيديوهات العادية التي نجحت
-                    if is_done and not was_short:
-                        await asyncio.sleep(4)
+                    # نضغط زر original فقط للفيديوهات العادية السليمة التي لم تخرج برسالة نجاح نصية
+                    if is_done and not is_skipped and not was_short and "رسالة" not in downloaded_quality:
+                        print("⏳ الانتظار للتأكد من ظهور خيارات الصوت (Original)...")
+                        await asyncio.sleep(6)
                         async for m in client.iter_messages(target_bot, limit=3):
                             if m.buttons:
+                                audio_pressed = False
                                 for row in m.buttons:
                                     for btn in row:
                                         if 'original' in btn.text.lower():
+                                            print(f"🎵 تم اختيار الصوت الأصلي: {btn.text}")
                                             await btn.click()
+                                            audio_pressed = True
                                             break
+                                    if audio_pressed: break
+                                if audio_pressed: break
             except Exception as e:
                 print(f"❌ خطأ: {e}")
             
@@ -157,7 +210,7 @@ async def main():
 
     # 📊 إرسال التقارير النهائية للحساب الثاني
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ دورة ناجحة: تم معالجة {new_videos_found} فيديو بنجاح واستقرار (بما فيها الـ Shorts المعدلة).")
+        await client.send_message(second_account, f"✅ دورة ناجحة: تم معالجة {new_videos_found} فيديو واستقرار كامل للنظام.")
 
     if missing_1080_videos:
         # تنسيق رسالة النواقص بشكل احترافي ومقروء
