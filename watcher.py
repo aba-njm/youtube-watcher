@@ -35,7 +35,7 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
-    MAX_VIDEOS_PER_RUN = 800  
+    MAX_VIDEOS_PER_RUN = 630
     
     # 📝 [إصلاح] إنشاء قائمة لجمع الفيديوهات التي لم تتوفر بجودة 1080p
     missing_1080_videos = []
