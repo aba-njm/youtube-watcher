@@ -27,7 +27,7 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء التشغيل الفائق: فحص ذكي وبحد أقصى 800 فيديو مع صيد الجودات وإرسال التقارير...")
+    print("🚀 بدء التشغيل الفائق: فحص ذكي مخصص للتقارير الدقيقة وبحد أقصى 800 فيديو...")
 
     downloaded = get_downloaded_links()
     
@@ -35,16 +35,16 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
-    MAX_VIDEOS_PER_RUN = 630
+    MAX_VIDEOS_PER_RUN = 800  
     
-    # 📝 [إصلاح] إنشاء قائمة لجمع الفيديوهات التي لم تتوفر بجودة 1080p
-    missing_1080_videos = []
+    # 📝 قائمة تجميع تقارير الفيديوهات المستهدفة (الفاشلة + الجودات المنخفضة جداً)
+    report_items = []
     
     # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
     
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
-    success_keywords = ['🈺️']
+    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
     for channel_rss in channels:
         if new_videos_found >= MAX_VIDEOS_PER_RUN:
@@ -74,7 +74,7 @@ async def main():
                 is_done = False
                 is_skipped = False
                 downloaded_quality = "غير معروفة"
-                has_1080 = False # مؤشر للتأكد إن كانت الجودة ممتازة أم لا
+                highest_res_found = None # لتتبع القيمة الرقمية للجودة بدقة
                 
                 while (time.time() - start_time) < 90:
                     await asyncio.sleep(2)
@@ -83,20 +83,22 @@ async def main():
                         
                         msg_text = message.text.lower() if message.text else ""
                         
-                        # 1️⃣ فحص رسائل الفشل
+                        # 1️⃣ فحص رسائل الفشل (إضافة الرابط للتقرير بدون العنوان)
                         if any(word in msg_text for word in error_keywords):
                             print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
                             save_to_history(video_link)
                             new_videos_found += 1
                             is_skipped = True
                             is_done = True
+                            
+                            # 📝 تسجيل روابط الفشل في التقرير
+                            report_items.append(f"❌ <b>فشل التحميل (رابط معطل أو محظور من البوت):</b>\n🔗 {video_link}")
                             break
                         
                         # 2️⃣ فحص رسائل النجاح النصية
                         if any(word in msg_text for word in success_keywords):
                             print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
                             downloaded_quality = "تلقائي (رسالة نجاح)"
-                            has_1080 = True # نعتبرها جيدة طالما البوت بدأ التحميل مباشرة تلقائياً
                             is_done = True
                             break
                         
@@ -108,8 +110,6 @@ async def main():
                             for row in message.buttons:
                                 for btn in row:
                                     btn_text = btn.text if btn.text else ""
-                                    
-                                    # استخراج الأرقام الصافية متجاوزاً الإيموجيات
                                     numbers_in_btn = re.findall(r'\d+', btn_text)
                                     
                                     for num_str in numbers_in_btn:
@@ -123,11 +123,8 @@ async def main():
                                 
                                 print(f"🎯 تم صيد أعلى رقم جودة متاح حقيقياً وضغطه: ({btn_to_click.text}) -> الجودة المعتمدة: {highest_res}p")
                                 await btn_to_click.click()
-                                downloaded_quality = btn_to_click.text # [تعديل] نأخذ نص الزر كاملاً بما فيه الإيموجي للتقرير
-                                
-                                if highest_res >= 1080:
-                                    has_1080 = True
-                                    
+                                downloaded_quality = btn_to_click.text 
+                                highest_res_found = highest_res # حفظ الرقم للفحص اللاحق
                                 is_done = True
                                 break
                             
@@ -135,6 +132,7 @@ async def main():
                                 print("ℹ️ مرت 40 ثانية ولم نحدد رقم جودة حقيقي صريح، الضغط على أول زر متاح احتياطياً...")
                                 await message.click(0)
                                 downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
+                                highest_res_found = 0 # إعطائه قيمة صفر ليعامل كجودة منخفضة مبهمة ويتم الإبلاغ عنها
                                 is_done = True
                                 break
                             
@@ -145,10 +143,10 @@ async def main():
                     new_videos_found += 1
                     print(f"💾 تم حفظ الرابط بنجاح في السجل بعد التفاعل بجودة: {downloaded_quality}")
                     
-                    # [إصلاح] إذا كان الفيديو لا يدعم 1080p، أضفه فوراً لقائمة التقرير مع اسم ومحتوى الزر ورابط الفيديو
-                    if not has_1080:
-                        print(f"⚠️ جودة الفيديو أقل من 1080p ({downloaded_quality}). تم تسجيله للتقرير...")
-                        missing_1080_videos.append(f"🔗 <b>{entry.title}</b>\n📥 الزر المضغوط: <code>{downloaded_quality}</code>\n{video_link}")
+                    # 🎯 الفحص الذكي للجودات المنخفضة: أقل من 1080 بشرط ألا تكون 720 وألا تكون 854 (وبدون عنوان الفيديو)
+                    if highest_res_found is not None and highest_res_found < 1080 and highest_res_found not in [720, 854]:
+                        print(f"⚠️ جودة الفيديو منخفضة جداً ({downloaded_quality}). تم تسجيله للتقرير...")
+                        report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
                     
                     # الضغط على زر الصوت الأصلي الاحتياطي
                     print("⏳ الانتظار 5 ثواني للتأكد من ظهور خيارات الصوت (Original)...")
@@ -170,24 +168,24 @@ async def main():
             
             await asyncio.sleep(6)
 
-    # 📊 [إصلاح] إرسال التقارير النهائية للحساب الثاني
+    # 📊 إرسال إشعار نهاية الدورة الناجحة للحساب الثاني
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم معالجة {new_videos_found} فيديو بنجاح كامل.")
+        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة الفيديوهات المتاحة بنجاح.")
 
-    # إذا كانت هناك فيديوهات بجودة ضعيفة، يتم إرسال قائمة منسقة بها بالكامل
-    if missing_1080_videos:
-        report_header = "⚠️ <b>فيديوهات لم تتوفر بجودة 1080p (تم تحميلها بالجودة المتاحة وحفظها في السجل):</b>\n\n"
-        report_body = "\n\n".join(missing_1080_videos)
+    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة) المفلترة بدون عناوين وبشكل منسق
+    if report_items:
+        report_header = "📊 <b>تقرير الحالات الخاصة (روابط فاشلة / جودات أقل من 720p):</b>\n\n"
+        report_body = "\n\n" + "\n\n" .join(report_items)
         
-        # تقسيم التقرير في حال كان الطول كبيراً جداً لتجنب قيود تلغرام للرسائل الطويلة
+        # تقسيم التقرير تلقائياً إذا كان كبيراً جداً تفادياً لقيود تلغرام للرسائل الطويلة
         if len(report_header + report_body) > 4000:
-            chunks = [missing_1080_videos[i:i + 15] for i in range(0, len(missing_1080_videos), 15)]
+            chunks = [report_items[i:i + 20] for i in range(0, len(report_items), 20)]
             for idx, chunk in enumerate(chunks):
                 chunk_body = "\n\n".join(chunk)
                 await client.send_message(second_account, f"{report_header} (جزء {idx+1}):\n\n{chunk_body}", parse_mode='html')
         else:
             await client.send_message(second_account, f"{report_header}{report_body}", parse_mode='html')
-        print(f"📥 تم إرسال تقرير بـ {len(missing_1080_videos)} فيديو بجودة أقل من 1080p لحسابك الثاني.")
+        print(f"📥 تم إرسال تقرير الفلترة الدقيقة بنجاح لحسابك الثاني.")
 
 with client:
     client.loop.run_until_complete(main())
