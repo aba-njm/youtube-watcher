@@ -27,7 +27,12 @@ def save_to_history(link):
 
 async def main():
     await client.start()
-    print("🚀 بدء التشغيل الفائق: فحص ذكي مخصص للتقارير الدقيقة وبحد أقصى 800 فيديو...")
+    
+    # ⏱️ [إصلاح] تسجيل وقت بداية تشغيل السكربت بالثواني
+    script_start_time = time.time()
+    MAX_RUN_TIME = 19800  # 5.5 ساعات بالثواني (حماية قبل حد الـ 6 ساعات)
+    
+    print("🚀 بدء التشغيل الفائق: نظام ذكي مخصص للتقارير مع حماية زمنيّة ضد انقطاع جيت هاب...")
 
     downloaded = get_downloaded_links()
     
@@ -37,7 +42,7 @@ async def main():
     new_videos_found = 0
     MAX_VIDEOS_PER_RUN = 800  
     
-    # 📝 قائمة تجميع تقارير الفيديوهات المستهدفة (الفاشلة + الجودات المنخفضة جداً)
+    # قائمة تجميع تقارير الفيديوهات المستهدفة (الفاشلة + الجودات المنخفضة جداً)
     report_items = []
     
     # 🛑 الكلمات الدليلية لكشف الروابط المعطوبة أو المحظورة من البوت
@@ -46,15 +51,22 @@ async def main():
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
     success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
+    time_limit_reached = False # مؤشر لكسر الحلقات عند انتهاء الوقت
+
     for channel_rss in channels:
-        if new_videos_found >= MAX_VIDEOS_PER_RUN:
-            print(f"⚠️ تم الوصول للحد الأقصى الجديد ({MAX_VIDEOS_PER_RUN} فيديو). إيقاف مؤقت...")
+        if new_videos_found >= MAX_VIDEOS_PER_RUN or time_limit_reached:
             break
 
         feed = feedparser.parse(channel_rss)
         if not feed.entries: continue
             
         for entry in reversed(feed.entries):
+            # ⏱️ [فحص الوقت] إذا تجاوزنا 5.5 ساعة، نوقف الفحص فوراً لنحفظ ما تم إنجازه
+            if (time.time() - script_start_time) > MAX_RUN_TIME:
+                print("⚠️ تنبيه أمان: شارفنا على حد الـ 6 ساعات لجيت هاب! إيقاف منظم الآن لحفظ السجل...")
+                time_limit_reached = True
+                break
+
             if new_videos_found >= MAX_VIDEOS_PER_RUN: break
                 
             original_link = entry.link
@@ -74,7 +86,7 @@ async def main():
                 is_done = False
                 is_skipped = False
                 downloaded_quality = "غير معروفة"
-                highest_res_found = None # لتتبع القيمة الرقمية للجودة بدقة
+                highest_res_found = None 
                 
                 while (time.time() - start_time) < 90:
                     await asyncio.sleep(2)
@@ -83,7 +95,7 @@ async def main():
                         
                         msg_text = message.text.lower() if message.text else ""
                         
-                        # 1️⃣ فحص رسائل الفشل (إضافة الرابط للتقرير بدون العنوان)
+                        # 1️⃣ فحص رسائل الفشل
                         if any(word in msg_text for word in error_keywords):
                             print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
                             save_to_history(video_link)
@@ -91,7 +103,6 @@ async def main():
                             is_skipped = True
                             is_done = True
                             
-                            # 📝 تسجيل روابط الفشل في التقرير
                             report_items.append(f"❌ <b>فشل التحميل (رابط معطل أو محظور من البوت):</b>\n🔗 {video_link}")
                             break
                         
@@ -124,7 +135,7 @@ async def main():
                                 print(f"🎯 تم صيد أعلى رقم جودة متاح حقيقياً وضغطه: ({btn_to_click.text}) -> الجودة المعتمدة: {highest_res}p")
                                 await btn_to_click.click()
                                 downloaded_quality = btn_to_click.text 
-                                highest_res_found = highest_res # حفظ الرقم للفحص اللاحق
+                                highest_res_found = highest_res 
                                 is_done = True
                                 break
                             
@@ -132,7 +143,7 @@ async def main():
                                 print("ℹ️ مرت 40 ثانية ولم نحدد رقم جودة حقيقي صريح، الضغط على أول زر متاح احتياطياً...")
                                 await message.click(0)
                                 downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
-                                highest_res_found = 0 # إعطائه قيمة صفر ليعامل كجودة منخفضة مبهمة ويتم الإبلاغ عنها
+                                highest_res_found = 0 
                                 is_done = True
                                 break
                             
@@ -143,12 +154,10 @@ async def main():
                     new_videos_found += 1
                     print(f"💾 تم حفظ الرابط بنجاح في السجل بعد التفاعل بجودة: {downloaded_quality}")
                     
-                    # 🎯 الفحص الذكي للجودات المنخفضة: أقل من 1080 بشرط ألا تكون 720 وألا تكون 854 (وبدون عنوان الفيديو)
                     if highest_res_found is not None and highest_res_found < 1080 and highest_res_found not in [720, 854]:
                         print(f"⚠️ جودة الفيديو منخفضة جداً ({downloaded_quality}). تم تسجيله للتقرير...")
                         report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
                     
-                    # الضغط على زر الصوت الأصلي الاحتياطي
                     print("⏳ الانتظار 5 ثواني للتأكد من ظهور خيارات الصوت (Original)...")
                     await asyncio.sleep(5)
                     async for m in client.iter_messages(target_bot, limit=3):
@@ -170,14 +179,14 @@ async def main():
 
     # 📊 إرسال إشعار نهاية الدورة الناجحة للحساب الثاني
     if new_videos_found > 0:
-        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة الفيديوهات المتاحة بنجاح.")
+        status_msg = "⚠️ تم التوقف لحماية الوقت وضمان الحفظ" if time_limit_reached else "بنجاح كامل"
+        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة {new_videos_found} فيديو {status_msg}.")
 
-    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة) المفلترة بدون عناوين وبشكل منسق
+    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة)
     if report_items:
         report_header = "📊 <b>تقرير الحالات الخاصة (روابط فاشلة / جودات أقل من 720p):</b>\n\n"
         report_body = "\n\n" + "\n\n" .join(report_items)
         
-        # تقسيم التقرير تلقائياً إذا كان كبيراً جداً تفادياً لقيود تلغرام للرسائل الطويلة
         if len(report_header + report_body) > 4000:
             chunks = [report_items[i:i + 20] for i in range(0, len(report_items), 20)]
             for idx, chunk in enumerate(chunks):
@@ -185,7 +194,7 @@ async def main():
                 await client.send_message(second_account, f"{report_header} (جزء {idx+1}):\n\n{chunk_body}", parse_mode='html')
         else:
             await client.send_message(second_account, f"{report_header}{report_body}", parse_mode='html')
-        print(f"📥 تم إرسال تقرير الفلترة الدقيقة بنجاح لحسابك الثاني.")
+        print(f"📥 تم إرسال تقرير الفلترة بنجاح.")
 
 with client:
     client.loop.run_until_complete(main())
