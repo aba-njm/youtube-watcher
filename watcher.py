@@ -1,16 +1,17 @@
 import os
 import asyncio
-import feedparser
+import json
 import time
-import re  # مكتبة الريجكس لاستخراج الأرقام الصافية من الأزرار
-import urllib.request  # مكتبة مدمجة لجلب الروابط بهوية مخصصة
+import re  # مكتبة الريجكس لاستخراج الأرقام الصافية ومعرفات القنوات
+import urllib.request  # مكتبة مدمجة لطلب الداتا من جوجل رسميًا
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 # --- جلب البيانات من خزنة جيت هاب السرية ---
 api_id = int(os.environ.get('API_ID', 0)) 
 api_hash = os.environ.get('API_HASH', 'hash')
-session_string = os.environ.get('TELEGRAM_SESSION', '') # النص المشفر البديل لملف الجلسة
+session_string = os.environ.get('TELEGRAM_SESSION', '') 
+youtube_api_key = os.environ.get('YOUTUBE_API_KEY', '') # 🔑 مفتاح اليوتيوب الرسمي الجديد
 
 target_bot = -5232399039    # يوزر بوت التحميل (المجموعة أو الشات)
 second_account = '@al_rawl'   # يوزر حسابك لاستلام التقرير
@@ -29,11 +30,15 @@ def save_to_history(link):
 async def main():
     await client.start()
     
-    # ⏱️ تسجيل وقت بداية تشغيل السكربت بالثواني
+    # ⏱️ تسجيل وقت بداية تشغيل السكربت بالثواني للحماية
     script_start_time = time.time()
     MAX_RUN_TIME = 19800  # 5.5 ساعات بالثواني (حماية قبل حد الـ 6 ساعات)
     
-    print("🚀 بدء التشغيل الفائق: نظام الحماية ضد حظر يوتيوب والتنكر الذكي بـ User-Agent...")
+    print("🚀 بدء التشغيل الفائق والمستقر بنظام YouTube Data API v3 الرسمي والمضاد للحظر...")
+
+    if not youtube_api_key:
+        print("❌ خطأ حرج: لم يتم العثور على YOUTUBE_API_KEY في خزنة جيت هاب السرية! يرجى إضافته أولاً.")
+        return
 
     downloaded = get_downloaded_links()
     print(f"💾 تم تحميل {len(downloaded)} رابط سابق من سجل الذاكرة (history.txt).")
@@ -56,36 +61,55 @@ async def main():
 
     time_limit_reached = False 
 
-    # هوية متصفح كروم حقيقي لتخطي حماية يوتيوب
-    browser_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-
-    for idx, channel_rss in enumerate(channels, 1):
+    for idx, channel_line in enumerate(channels, 1):
         if new_videos_found >= MAX_VIDEOS_PER_RUN or time_limit_reached:
             break
 
-        print(f"\n📡 [{idx}/{len(channels)}] جاري فحص القناة: {channel_rss}")
+        # استخراج الـ Channel ID من رابط الـ RSS المتواجد حالياً في ملفك تلقائياً
+        channel_id_match = re.search(r'channel_id=([A-Za-z0-9_-]+)', channel_line)
+        if channel_id_match:
+            channel_id = channel_id_match.group(1)
+        else:
+            channel_id = channel_line.strip() # إذا كان السطر يحتوي على الآيدي مباشرة
+            
+        print(f"\n📡 [{idx}/{len(channels)}] جاري جلب بيانات القناة رسمياً عبر جوجل: {channel_id}")
         
-        # 🛡️ [تعديل جوهري] جلب محتوى القناة كمتصفح حقيقي لتفادي الحظر والأخطاء
+        # تحويل كود القناة لجلب قائمة المرفوعات المباشرة لضمان توفير استهلاك الكوتا المجانية (تستهلك 1 دقيقة فقط)
+        if channel_id.startswith('UC'):
+            uploads_playlist_id = 'UU' + channel_id[2:]
+        else:
+            uploads_playlist_id = channel_id
+
+        api_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=10&key={youtube_api_key}"
+        
         try:
-            req = urllib.request.Request(channel_rss, headers=browser_headers)
+            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
             loop = asyncio.get_running_loop()
-            # تشغيل الجلب المتزامن داخل بيئة الـ async بدون تجميد السكربت
-            xml_data = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
-            feed = feedparser.parse(xml_data)
-        except Exception as fetch_error:
-            print(f"❌ خطأ حماية أثناء الاتصال بيوتيوب وسحب البيانات: {fetch_error}")
+            json_bytes = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
+            api_data = json.loads(json_bytes.decode('utf-8'))
+            
+            entries = []
+            for item in api_data.get('items', []):
+                snippet = item.get('snippet', {})
+                video_id = snippet.get('resourceId', {}).get('videoId')
+                title = snippet.get('title', 'محتوى بدون عنوان')
+                if video_id:
+                    entries.append({
+                        'title': title,
+                        'link': f"https://www.youtube.com/watch?v={video_id}"
+                    })
+        except Exception as api_error:
+            print(f"❌ خطأ حماية أو استجابة من سيرفرات Google API للمطورين: {api_error}")
             continue
 
-        if not feed.entries: 
-            print(f"⚠️ تنبيه: لم تنجح محاولة القراءة، يوتيوب يرفض الاستجابة لهذا الرابط حالياً.")
+        if not entries: 
+            print(f"⚠️ تنبيه: لم يتم العثور على أي فيديوهات منشورة حديثاً في هذه القناة حالياً.")
             continue
             
-        print(f"📊 القناة استجابت بنجاح وتضم {len(feed.entries)} فيديو. جاري فحص الجديد...")
+        print(f"📊 تم جلب أحدث {len(entries)} فيديو رسمي بنجاح تام من جوجل. جاري مطابقتها مع السجل...")
         skipped_in_channel = 0
         
-        for entry in reversed(feed.entries):
+        for entry in reversed(entries):
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 print("⚠️ تنبيه أمان: شارفنا على حد الـ 6 ساعات لجيت هاب! إيقاف منظم الآن لحفظ السجل...")
                 time_limit_reached = True
@@ -93,16 +117,13 @@ async def main():
 
             if new_videos_found >= MAX_VIDEOS_PER_RUN: break
                 
-            original_link = entry.link
-            video_link = original_link
-            if '/shorts/' in video_link:
-                video_link = video_link.replace('?', '&').replace('/shorts/', '/watch?v=')
-                
+            video_link = entry['link']
+            
             if video_link in downloaded: 
                 skipped_in_channel += 1
                 continue 
                 
-            print(f"🔥 [فيديو جديد مكتشف] رصدته الآن: {entry.title}")
+            print(f"🔥 [فيديو جديد تم اصطياده] معالجة: {entry['title']}")
             
             try:
                 sent_msg = await client.send_message(target_bot, video_link)
