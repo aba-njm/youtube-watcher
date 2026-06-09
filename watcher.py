@@ -40,7 +40,7 @@ async def main():
         channels = [line.strip() for line in f if line.strip()]
 
     new_videos_found = 0
-    MAX_VIDEOS_PER_RUN = 800  
+    MAX_VIDEOS_PER_RUN = 1000
     
     # قائمة تجميع تقارير الفيديوهات المستهدفة (الفاشلة + الجودات المنخفضة جداً)
     report_items = []
