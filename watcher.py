@@ -211,14 +211,15 @@ async def main():
     )
     await client.send_message(second_account, detailed_summary, parse_mode='html')
 
-    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة)
+    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة) بدون أخطاء السنتاكس 🛠️
     if report_items:
         report_header = "📊 <b>تقرير الحالات الخاصة (روابط فاشلة / جودات أقل من 720p):</b>\n\n"
         report_body = "\n\n" + "\n\n" .join(report_items)
         if len(report_header + report_body) > 4000:
             chunks = [report_items[i:i + 20] for i in range(0, len(report_items), 20)]
             for idx, chunk in enumerate(chunks):
-                await client.send_message(second_account, f"{report_header} (جزء {idx+1}):\n\n{\n\n.join(chunk)}", parse_mode='html')
+                chunk_body = "\n\n".join(chunk)
+                await client.send_message(second_account, f"{report_header} (جزء {idx+1}):\n\n{chunk_body}", parse_mode='html')
         else:
             await client.send_message(second_account, f"{report_header}{report_body}", parse_mode='html')
 
