@@ -32,7 +32,9 @@ jobs:
         API_ID: ${{ secrets.API_ID }}
         API_HASH: ${{ secrets.API_HASH }}
         TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }} # 🔑 تم إضافة السطر هنا لتمرير المفتاح بأمان لبايثون
       run: python watcher.py
+
     - name: Save and Commit History
       run: |
         git config --local user.email "actions@github.com"
