@@ -28,16 +28,18 @@ def save_to_history(link):
 async def main():
     await client.start()
     
-    # ⏱️ [إصلاح] تسجيل وقت بداية تشغيل السكربت بالثواني
+    # ⏱️ تسجيل وقت بداية تشغيل السكربت بالثواني
     script_start_time = time.time()
     MAX_RUN_TIME = 19800  # 5.5 ساعات بالثواني (حماية قبل حد الـ 6 ساعات)
     
-    print("🚀 بدء التشغيل الفائق: نظام ذكي مخصص للتقارير مع حماية زمنيّة ضد انقطاع جيت هاب...")
+    print("🚀 بدء التشغيل الفائق: نظام المراقبة المكشوف والمفصل لكافة القنوات...")
 
     downloaded = get_downloaded_links()
+    print(f"💾 تم تحميل {len(downloaded)} رابط سابق من سجل الذاكرة (history.txt).")
     
     with open('channels.txt', 'r', encoding='utf-8') as f:
         channels = [line.strip() for line in f if line.strip()]
+    print(f"📋 تم رصد {len(channels)} قناة مستهدفة داخل ملف channels.txt")
 
     new_videos_found = 0
     MAX_VIDEOS_PER_RUN = 1000
@@ -51,15 +53,23 @@ async def main():
     # 🟢 الكلمات المفتاحية المخصصة للنجاح النصي
     success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
-    time_limit_reached = False # مؤشر لكسر الحلقات عند انتهاء الوقت
+    time_limit_reached = False 
 
-    for channel_rss in channels:
+    # البدء في الدوران على القنوات مع طباعة عدّاد صريح لكل قناة
+    for idx, channel_rss in enumerate(channels, 1):
         if new_videos_found >= MAX_VIDEOS_PER_RUN or time_limit_reached:
             break
 
+        print(f"\n📡 [{idx}/{len(channels)}] جاري فحص القناة: {channel_rss}")
+        
         feed = feedparser.parse(channel_rss)
-        if not feed.entries: continue
+        if not feed.entries: 
+            print(f"⚠️ تنبيه: لم يتم العثور على فيديوهات في هذه القناة (قد يكون الرابط معطلاً أو يوتيوب يفرض حظراً مؤقتاً).")
+            continue
             
+        print(f"📊 القناة تحتوي على {len(feed.entries)} فيديو حالياً بداخلها. جاري المقارنة مع السجل...")
+        skipped_in_channel = 0
+        
         for entry in reversed(feed.entries):
             # ⏱️ [فحص الوقت] إذا تجاوزنا 5.5 ساعة، نوقف الفحص فوراً لنحفظ ما تم إنجازه
             if (time.time() - script_start_time) > MAX_RUN_TIME:
@@ -76,9 +86,11 @@ async def main():
             if '/shorts/' in video_link:
                 video_link = video_link.replace('?', '&').replace('/shorts/', '/watch?v=')
                 
-            if video_link in downloaded: continue 
+            if video_link in downloaded: 
+                skipped_in_channel += 1
+                continue 
                 
-            print(f"\n🆕 محتوى جديد رصدته: {entry.title}")
+            print(f"🔥 [فيديو جديد مكتشف] رصدته الآن: {entry.title}")
             
             try:
                 sent_msg = await client.send_message(target_bot, video_link)
@@ -176,11 +188,14 @@ async def main():
                 print(f"❌ خطأ أثناء معالجة الرابط: {e}")
             
             await asyncio.sleep(6)
+            
+        if skipped_in_channel > 0:
+            print(f"ℹ️ نتيجة الفحص: تم تخطي {skipped_in_channel} فيديو من هذه القناة لأنها محملة مسبقاً بالكامل.")
 
     # 📊 إرسال إشعار نهاية الدورة الناجحة للحساب الثاني
     if new_videos_found > 0:
         status_msg = "⚠️ تم التوقف لحماية الوقت وضمان الحفظ" if time_limit_reached else "بنجاح كامل"
-        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة {new_videos_found} فيديو {status_msg}.")
+        await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة {new_videos_found} فيديو جديد {status_msg}.")
 
     # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة)
     if report_items:
