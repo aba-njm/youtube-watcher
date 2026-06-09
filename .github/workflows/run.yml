@@ -2,7 +2,7 @@ name: YouTube Auto Downloader
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # تشغيل كل 15 دقيقة تلقائياً
+    - cron: '0 * * * *' # تشغيل كل ساعة تلقائياً
   workflow_dispatch: # يتيح لك تشغيله يدوياً كأداة للتجربة
 
 permissions:
