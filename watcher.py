@@ -3,6 +3,7 @@ import asyncio
 import feedparser
 import time
 import re  # مكتبة الريجكس لاستخراج الأرقام الصافية من الأزرار
+import urllib.request  # مكتبة مدمجة لجلب الروابط بهوية مخصصة
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
@@ -32,7 +33,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 19800  # 5.5 ساعات بالثواني (حماية قبل حد الـ 6 ساعات)
     
-    print("🚀 بدء التشغيل الفائق: نظام المراقبة المكشوف والمفصل لكافة القنوات...")
+    print("🚀 بدء التشغيل الفائق: نظام الحماية ضد حظر يوتيوب والتنكر الذكي بـ User-Agent...")
 
     downloaded = get_downloaded_links()
     print(f"💾 تم تحميل {len(downloaded)} رابط سابق من سجل الذاكرة (history.txt).")
@@ -55,23 +56,36 @@ async def main():
 
     time_limit_reached = False 
 
-    # البدء في الدوران على القنوات مع طباعة عدّاد صريح لكل قناة
+    # هوية متصفح كروم حقيقي لتخطي حماية يوتيوب
+    browser_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
     for idx, channel_rss in enumerate(channels, 1):
         if new_videos_found >= MAX_VIDEOS_PER_RUN or time_limit_reached:
             break
 
         print(f"\n📡 [{idx}/{len(channels)}] جاري فحص القناة: {channel_rss}")
         
-        feed = feedparser.parse(channel_rss)
+        # 🛡️ [تعديل جوهري] جلب محتوى القناة كمتصفح حقيقي لتفادي الحظر والأخطاء
+        try:
+            req = urllib.request.Request(channel_rss, headers=browser_headers)
+            loop = asyncio.get_running_loop()
+            # تشغيل الجلب المتزامن داخل بيئة الـ async بدون تجميد السكربت
+            xml_data = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
+            feed = feedparser.parse(xml_data)
+        except Exception as fetch_error:
+            print(f"❌ خطأ حماية أثناء الاتصال بيوتيوب وسحب البيانات: {fetch_error}")
+            continue
+
         if not feed.entries: 
-            print(f"⚠️ تنبيه: لم يتم العثور على فيديوهات في هذه القناة (قد يكون الرابط معطلاً أو يوتيوب يفرض حظراً مؤقتاً).")
+            print(f"⚠️ تنبيه: لم تنجح محاولة القراءة، يوتيوب يرفض الاستجابة لهذا الرابط حالياً.")
             continue
             
-        print(f"📊 القناة تحتوي على {len(feed.entries)} فيديو حالياً بداخلها. جاري المقارنة مع السجل...")
+        print(f"📊 القناة استجابت بنجاح وتضم {len(feed.entries)} فيديو. جاري فحص الجديد...")
         skipped_in_channel = 0
         
         for entry in reversed(feed.entries):
-            # ⏱️ [فحص الوقت] إذا تجاوزنا 5.5 ساعة، نوقف الفحص فوراً لنحفظ ما تم إنجازه
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 print("⚠️ تنبيه أمان: شارفنا على حد الـ 6 ساعات لجيت هاب! إيقاف منظم الآن لحفظ السجل...")
                 time_limit_reached = True
@@ -80,8 +94,6 @@ async def main():
             if new_videos_found >= MAX_VIDEOS_PER_RUN: break
                 
             original_link = entry.link
-            
-            # 🔄 توحيد وتحويل روابط Shorts برمجياً إلى روابط عادية لضمان قبول البوت
             video_link = original_link
             if '/shorts/' in video_link:
                 video_link = video_link.replace('?', '&').replace('/shorts/', '/watch?v=')
@@ -107,25 +119,21 @@ async def main():
                         
                         msg_text = message.text.lower() if message.text else ""
                         
-                        # 1️⃣ فحص رسائل الفشل
                         if any(word in msg_text for word in error_keywords):
                             print(f"⚠️ تخطي: الرابط معطل أو غير متاح في البوت.")
                             save_to_history(video_link)
                             new_videos_found += 1
                             is_skipped = True
                             is_done = True
-                            
                             report_items.append(f"❌ <b>فشل التحميل (رابط معطل أو محظور من البوت):</b>\n🔗 {video_link}")
                             break
                         
-                        # 2️⃣ فحص رسائل النجاح النصية
                         if any(word in msg_text for word in success_keywords):
                             print(f"🎯 تم رصد رسالة نجاح نصية معينة: ({msg_text})")
                             downloaded_quality = "تلقائي (رسالة نجاح)"
                             is_done = True
                             break
                         
-                        # 3️⃣ 🔥 نظام الفحص المباشر وصيد أعلى رقم جودة حقيقي
                         if message.buttons:
                             detected_buttons = []
                             valid_resolutions = [144, 240, 360, 480, 576, 720, 854, 1080, 1440, 2160, 4320]
@@ -192,12 +200,10 @@ async def main():
         if skipped_in_channel > 0:
             print(f"ℹ️ نتيجة الفحص: تم تخطي {skipped_in_channel} فيديو من هذه القناة لأنها محملة مسبقاً بالكامل.")
 
-    # 📊 إرسال إشعار نهاية الدورة الناجحة للحساب الثاني
     if new_videos_found > 0:
         status_msg = "⚠️ تم التوقف لحماية الوقت وضمان الحفظ" if time_limit_reached else "بنجاح كامل"
         await client.send_message(second_account, f"✅ دورة سوبر ناجحة: تم إنهاء فحص ومعالجة {new_videos_found} فيديو جديد {status_msg}.")
 
-    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة)
     if report_items:
         report_header = "📊 <b>تقرير الحالات الخاصة (روابط فاشلة / جودات أقل من 720p):</b>\n\n"
         report_body = "\n\n" + "\n\n" .join(report_items)
