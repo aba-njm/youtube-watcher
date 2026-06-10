@@ -13,8 +13,9 @@ api_hash = os.environ.get('API_HASH', 'hash')
 session_string = os.environ.get('TELEGRAM_SESSION', '') 
 youtube_api_key = os.environ.get('YOUTUBE_API_KEY', '') # 🔑 مفتاح اليوتيوب الرسمي الجديد
 
-target_bot = -5232399039    # يوزر بوت التحميل (المجموعة أو الشات)
-second_account = '@al_rawl'   # يوزر حسابك لاستلام التقرير
+# 🔒 تم تشفير وإخفاء الحسابات والبوتات هنا بنجاح
+target_bot = int(os.environ.get('TARGET_BOT', 0))       # آيدي المجموعة أو الشات الخاص بالبوت
+second_account = os.environ.get('SECOND_ACCOUNT', '')   # يوزر حسابك لاستلام التقارير
 # ----------------------------------------------------------------------
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
@@ -35,8 +36,9 @@ async def main():
 
     print("🚀 بدء التشغيل بنظام الإحصائيات الشاملة لتتبع القنوات...")
 
-    if not youtube_api_key:
-        print("❌ خطأ حرج: لم يتم العثور على YOUTUBE_API_KEY في خزنة جيت هاب السرية!")
+    # التحقق من وجود المتغيرات السرية الأساسية
+    if not youtube_api_key or not target_bot or not second_account:
+        print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية (YOUTUBE_API_KEY أو TARGET_BOT أو SECOND_ACCOUNT) في جيت هاب!")
         return
 
     downloaded = get_downloaded_links()  # مجموعة تحتوي على الـ IDs التي تم تحميلها سابقاً
@@ -113,7 +115,7 @@ async def main():
 
             v_id = entry['id']
             video_link = entry['link']
-            
+
             # المقارنة الآن تتم بالـ ID الصافي وليس الرابط الكامل لتوفير الذاكرة والوقت
             if v_id in downloaded: continue 
 
