@@ -7,11 +7,11 @@ on:
 
 permissions:
   contents: write
-  
+
 concurrency:
   group: "bot-runner"
   cancel-in-progress: false
-  
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
@@ -32,10 +32,9 @@ jobs:
         API_ID: ${{ secrets.API_ID }}
         API_HASH: ${{ secrets.API_HASH }}
         TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }} # 🔑 تم إضافة السطر هنا لتمرير المفتاح بأمان لبايثون
-          TARGET_BOT: $ 
-{{ secrets.TARGET_BOT }} 
-          SECOND_ACCOUNT: ${{ secrets.SECOND_ACCOUNT }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        TARGET_BOT: ${{ secrets.TARGET_BOT }}
+        SECOND_ACCOUNT: ${{ secrets.SECOND_ACCOUNT }}
       run: python watcher.py
 
     - name: Save and Commit History
@@ -44,4 +43,5 @@ jobs:
         git config --local user.name "GitHub Actions"
         git add history.txt
         git commit -m "🤖 تحديث سجل الفيديوهات المحملة تلقائياً [skip ci]" || echo "لا توجد تغييرات للحفظ"
+        git pull origin HEAD --rebase
         git push
