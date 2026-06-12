@@ -126,6 +126,7 @@ async def main():
                 start_time = time.time()
                 is_done = False
                 is_skipped = False
+                skip_low_quality_report = False  # علم لتخطي تقرير الجودة المنخفضة للـ Shorts
                 downloaded_quality = "غير معروفة"
                 highest_res_found = None 
 
@@ -142,7 +143,7 @@ async def main():
                             new_videos_found += 1
                             is_skipped = True
                             is_done = True
-                            report_items.append(f"❌ <b>فشل التحميل:</b>\n🔗 {video_link}")
+                            report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
                             break
 
                         if any(word in msg_text for word in success_keywords):
@@ -152,7 +153,7 @@ async def main():
 
                         if message.buttons:
                             detected_buttons = []
-                            valid_resolutions = [144, 240, 360, 480, 576, 720, 854, 1080, 1440, 2160, 4320]
+                            valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
 
                             for row in message.buttons:
                                 for btn in row:
@@ -164,8 +165,24 @@ async def main():
                                             detected_buttons.append((num_val, btn))
 
                             if detected_buttons:
-                                detected_buttons.sort(key=lambda x: x[0], reverse=True)
-                                highest_res, btn_to_click = detected_buttons[0]
+                                # تحويل المصفوفة مؤقتاً لقاموس لتسريع الفحص المباشر والمستهدف 🚀
+                                res_dict = {x[0]: x[1] for x in detected_buttons}
+                                btn_to_click = None
+                                highest_res = None
+
+                                # 🟢 الفحص المباشر بدون مقارنة أو فرز الأرقام الأخرى الأعلى:
+                                if 854 in res_dict:
+                                    btn_to_click = res_dict[854]
+                                    highest_res = 854
+                                elif 640 in res_dict:
+                                    btn_to_click = res_dict[640]
+                                    highest_res = 640
+                                    skip_low_quality_report = True  # تخطي الإبلاغ لأن الـ 640p هي خيار متعمد هنا
+                                else:
+                                    # في حال لم تتواجد الجودات الخاصة بالـ Shorts، يعود النظام لترتيب واختيار الأعلى تلقائياً
+                                    detected_buttons.sort(key=lambda x: x[0], reverse=True)
+                                    highest_res, btn_to_click = detected_buttons[0]
+
                                 await btn_to_click.click()
                                 downloaded_quality = btn_to_click.text 
                                 highest_res_found = highest_res 
@@ -181,13 +198,16 @@ async def main():
 
                     if is_done: break
 
+                # معالجة النتائج بعد انتهاء حلقة الفحص والانتظار
                 if is_done and not is_skipped:
                     save_to_history(v_id)      # حفظ الـ ID فقط
                     downloaded.add(v_id)       # تحديث الذاكرة فوراً
                     new_videos_found += 1
 
+                    # إدراج الجودات المنخفضة في التقرير بشرط ألا تكون جودة Shorts مسموحة ومستهدفة (640p)
                     if highest_res_found is not None and highest_res_found < 1080 and highest_res_found not in [720, 854]:
-                        report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
+                        if not skip_low_quality_report:
+                            report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
 
                     await asyncio.sleep(5)
                     async for m in client.iter_messages(target_bot, limit=3):
@@ -201,8 +221,14 @@ async def main():
                                         break
                                 if audio_pressed: break
                             if audio_pressed: break
+                
+                elif not is_done:
+                    # في حال انتهت الـ 90 ثانية ولم يستجب البوت بأي رسائل نجاح، فشل، أو أزرار
+                    report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة الـ 90 ثانية دون استجابة البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+
             except Exception as e:
                 print(f"❌ خطأ أثناء معالجة الرابط: {e}")
+                report_items.append(f"❌ <b>خطأ نظام داخلي أثناء معالجة الرابط:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
 
             await asyncio.sleep(6)
 
@@ -218,9 +244,9 @@ async def main():
     )
     await client.send_message(second_account, detailed_summary, parse_mode='html')
 
-    # ✉️ إرسال تقرير الحالات الخاصة (المعطوبة والمنخفضة) بدون أخطاء السنتاكس 🛠️
+    # ✉️ إرسال تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة) بدون أخطاء السنتاكس 🛠️
     if report_items:
-        report_header = "📊 <b>تقرير الحالات الخاصة (روابط فاشلة / جودات أقل من 720p):</b>\n\n"
+        report_header = "📊 <b>تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة):</b>\n\n"
         report_body = "\n\n" + "\n\n" .join(report_items)
         if len(report_header + report_body) > 4000:
             chunks = [report_items[i:i + 20] for i in range(0, len(report_items), 20)]
