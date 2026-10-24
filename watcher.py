@@ -6,6 +6,16 @@ import re  # مكتبة الريجكس لاستخراج الأرقام الصا�
 import urllib.request  # مكتبة مدمجة لطلب الداتا من جوجل رسميًا
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.errors import RPCError
+
+# --- دالة مساعدة لتحويل المعرفات (سواء كانت آيدي رقمي أو يوزر نيم) ---
+def parse_entity(val):
+    if not val:
+        return None
+    val_str = str(val).strip()
+    if val_str.isdigit() or (val_str.startswith('-') and val_str[1:].isdigit()):
+        return int(val_str)
+    return val_str
 
 # --- جلب البيانات من خزنة جيت هاب السرية ---
 api_id = int(os.environ.get('API_ID', 0)) 
@@ -13,9 +23,9 @@ api_hash = os.environ.get('API_HASH', 'hash')
 session_string = os.environ.get('TELEGRAM_SESSION', '') 
 youtube_api_key = os.environ.get('YOUTUBE_API_KEY', '') # 🔑 مفتاح اليوتيوب الرسمي الجديد
 
-# 🔒 تم تشفير وإخفاء الحسابات والبوتات هنا بنجاح
-target_bot = int(os.environ.get('TARGET_BOT', 0))       # آيدي المجموعة أو الشات الخاص بالبوت
-second_account = os.environ.get('SECOND_ACCOUNT', '')   # يوزر حسابك لاستلام التقارير
+target_bot = parse_entity(os.environ.get('TARGET_BOT', ''))
+second_account = parse_entity(os.environ.get('SECOND_ACCOUNT', ''))
+
 # ----------------------------------------------------------------------
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
@@ -28,6 +38,20 @@ def save_to_history(video_id):
     with open('history.txt', 'a', encoding='utf-8') as f:
         f.write(video_id + '\n')  # تحفظ الـ ID الصافي فقط (11 حرفاً) بدلاً من الرابط الكامل
 
+async def send_safe_message(entity, text, parse_mode='html'):
+    """دالة مساعدة لإرسال الرسائل وتفادي انهيار السكربت عند خطأ الصلاحيات"""
+    if not entity:
+        print("⚠️ لم يتم تحديد المستلم للإرسال.")
+        return False
+    try:
+        await client.send_message(entity, text, parse_mode=parse_mode)
+        return True
+    except RPCError as e:
+        print(f"❌ خطأ تلغرام أثناء الإرسال إلى {entity}: {e}")
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع أثناء الإرسال إلى {entity}: {e}")
+    return False
+
 async def main():
     await client.start()
 
@@ -39,6 +63,10 @@ async def main():
     # التحقق من وجود المتغيرات السرية الأساسية
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية (YOUTUBE_API_KEY أو TARGET_BOT أو SECOND_ACCOUNT) في جيت هاب!")
+        return
+
+    if not os.path.exists('channels.txt'):
+        print("❌ خطأ حرج: ملف channels.txt غير موجود!")
         return
 
     downloaded = get_downloaded_links()  # مجموعة تحتوي على الـ IDs التي تم تحميلها سابقاً
@@ -123,6 +151,12 @@ async def main():
 
             try:
                 sent_msg = await client.send_message(target_bot, video_link)
+            except Exception as e:
+                print(f"❌ فشل إرسال الرابط للبوت ({target_bot}): {e}")
+                report_items.append(f"❌ <b>فشل إرسال الرابط إلى البوت:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
+                continue
+
+            try:
                 start_time = time.time()
                 is_done = False
                 is_skipped = False
@@ -165,7 +199,6 @@ async def main():
                                             detected_buttons.append((num_val, btn))
 
                             if detected_buttons:
-                                # تحويل المصفوفة مؤقتاً لقاموس لتسريع الفحص المباشر والمستهدف 🚀
                                 res_dict = {x[0]: x[1] for x in detected_buttons}
                                 btn_to_click = None
                                 highest_res = None
@@ -179,7 +212,6 @@ async def main():
                                     highest_res = 640
                                     skip_low_quality_report = True  # تخطي الإبلاغ لأن الـ 640p هي خيار متعمد هنا
                                 else:
-                                    # في حال لم تتواجد الجودات الخاصة بالـ Shorts، يعود النظام لترتيب واختيار الأعلى تلقائياً
                                     detected_buttons.sort(key=lambda x: x[0], reverse=True)
                                     highest_res, btn_to_click = detected_buttons[0]
 
@@ -204,7 +236,6 @@ async def main():
                     downloaded.add(v_id)       # تحديث الذاكرة فوراً
                     new_videos_found += 1
 
-                    # إدراج الجودات المنخفضة في التقرير بشرط ألا تكون جودة Shorts مسموحة ومستهدفة (640p)
                     if highest_res_found is not None and highest_res_found < 1080 and highest_res_found not in [720, 854]:
                         if not skip_low_quality_report:
                             report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
@@ -221,9 +252,8 @@ async def main():
                                         break
                                 if audio_pressed: break
                             if audio_pressed: break
-                
+
                 elif not is_done:
-                    # في حال انتهت الـ 90 ثانية ولم يستجب البوت بأي رسائل نجاح، فشل، أو أزرار
                     report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة الـ 90 ثانية دون استجابة البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
 
             except Exception as e:
@@ -232,7 +262,7 @@ async def main():
 
             await asyncio.sleep(6)
 
-    # 📊 صياغة وإرسال التقرير الإحصائي الشامل والجديد لحسابك الثاني عبر التليجرام
+    # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
     status_msg = "⚠️ تم التوقف جزئياً لحماية الوقت" if time_limit_reached else "بنجاح كامل"
 
     detailed_summary = (
@@ -242,19 +272,22 @@ async def main():
         f"❌ قنوات فشلت (روابط خاطئة أو مشاكل ID): <code>{failed_channels}</code>\n"
         f"🔥 فيديوهات جديدة تم إرسالها ومعالجتها: <code>{new_videos_found}</code>"
     )
-    await client.send_message(second_account, detailed_summary, parse_mode='html')
+    await send_safe_message(second_account, detailed_summary, parse_mode='html')
 
-    # ✉️ إرسال تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة) بدون أخطاء السنتاكس 🛠️
+    # ✉️ إرسال تقرير الحالات الخاصة وآلية تجزئة الرسائل بحسب طول النص الأقصى
     if report_items:
-        report_header = "📊 <b>تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة):</b>\n\n"
-        report_body = "\n\n" + "\n\n" .join(report_items)
-        if len(report_header + report_body) > 4000:
-            chunks = [report_items[i:i + 20] for i in range(0, len(report_items), 20)]
-            for idx, chunk in enumerate(chunks):
-                chunk_body = "\n\n".join(chunk)
-                await client.send_message(second_account, f"{report_header} (جزء {idx+1}):\n\n{chunk_body}", parse_mode='html')
-        else:
-            await client.send_message(second_account, f"{report_header}{report_body}", parse_mode='html')
+        header = "📊 <b>تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة):</b>\n\n"
+        current_chunk = header
+        
+        for item in report_items:
+            if len(current_chunk) + len(item) + 2 > 3800:
+                await send_safe_message(second_account, current_chunk, parse_mode='html')
+                current_chunk = header + item + "\n\n"
+            else:
+                current_chunk += item + "\n\n"
+        
+        if current_chunk != header:
+            await send_safe_message(second_account, current_chunk, parse_mode='html')
 
 with client:
     client.loop.run_until_complete(main())
