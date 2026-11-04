@@ -2,13 +2,13 @@ import os
 import asyncio
 import json
 import time
-import re  # مكتبة الريجكس لاستخراج الأرقام الصافية ومعرفات القنوات
-import urllib.request  # مكتبة مدمجة لطلب الداتا من جوجل رسميًا
+import re  # مكتبة الريجكس لاستخراج الأرقام الصافية وتجاوز الإيموجيات
+import urllib.request
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import RPCError
 
-# --- دالة مساعدة لتحويل المعرفات (سواء كانت آيدي رقمي أو يوزر نيم) ---
+# --- دالة مساعدة لتحويل المعرفات ---
 def parse_entity(val):
     if not val:
         return None
@@ -17,11 +17,11 @@ def parse_entity(val):
         return int(val_str)
     return val_str
 
-# --- جلب البيانات من خزنة جيت هاب السرية ---
+# --- جلب البيانات من البيئة ---
 api_id = int(os.environ.get('API_ID', 0)) 
 api_hash = os.environ.get('API_HASH', 'hash')
 session_string = os.environ.get('TELEGRAM_SESSION', '') 
-youtube_api_key = os.environ.get('YOUTUBE_API_KEY', '') # 🔑 مفتاح اليوتيوب الرسمي الجديد
+youtube_api_key = os.environ.get('YOUTUBE_API_KEY', '')
 
 target_bot = parse_entity(os.environ.get('TARGET_BOT', ''))
 second_account = parse_entity(os.environ.get('SECOND_ACCOUNT', ''))
@@ -32,11 +32,11 @@ client = TelegramClient(StringSession(session_string), api_id, api_hash)
 def get_downloaded_links():
     if not os.path.exists('history.txt'): return set()  
     with open('history.txt', 'r', encoding='utf-8') as f:
-        return {line.strip() for line in f if line.strip()}  # تقرأ الـ IDs المخزنة مباشرة وتضعها في set لسرعة فائقة
+        return {line.strip() for line in f if line.strip()}
 
 def save_to_history(video_id):
     with open('history.txt', 'a', encoding='utf-8') as f:
-        f.write(video_id + '\n')  # تحفظ الـ ID الصافي فقط (11 حرفاً) بدلاً من الرابط الكامل
+        f.write(video_id + '\n')
 
 async def send_safe_message(entity, text, parse_mode='html'):
     """دالة مساعدة لإرسال الرسائل وتفادي انهيار السكربت عند خطأ الصلاحيات"""
@@ -58,18 +58,17 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 19800  # 5.5 ساعات
 
-    print("🚀 بدء التشغيل بنظام الإحصائيات الشاملة لتتبع القنوات...")
+    print("🚀 بدء التشغيل بنظام التتابع الصارم والتعرف على استثناءات الإيموجي...")
 
-    # التحقق من وجود المتغيرات السرية الأساسية
     if not youtube_api_key or not target_bot or not second_account:
-        print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية (YOUTUBE_API_KEY أو TARGET_BOT أو SECOND_ACCOUNT) في جيت هاب!")
+        print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
         return
 
     if not os.path.exists('channels.txt'):
         print("❌ خطأ حرج: ملف channels.txt غير موجود!")
         return
 
-    downloaded = get_downloaded_links()  # مجموعة تحتوي على الـ IDs التي تم تحميلها سابقاً
+    downloaded = get_downloaded_links()
 
     with open('channels.txt', 'r', encoding='utf-8') as f:
         channels = [line.strip() for line in f if line.strip()]
@@ -77,13 +76,11 @@ async def main():
     new_videos_found = 0
     MAX_VIDEOS_PER_RUN = 1000
 
-    # عدادات مراقبة القنوات لتضمينها في تقرير تليجرام 📊
     successful_channels = 0
     failed_channels = 0
 
     report_items = []
     error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
-    success_keywords = ['جاري التحميل', 'بدأ التحميل', 'تنزيل', 'تم البدء', 'تحميل الفيديو']
 
     time_limit_reached = False 
 
@@ -91,12 +88,10 @@ async def main():
         if new_videos_found >= MAX_VIDEOS_PER_RUN or time_limit_reached:
             break
 
-        # استخراج الـ Channel ID تلقائياً
         channel_id_match = re.search(r'channel_id=([A-Za-z0-9_-]+)', channel_line)
         if channel_id_match:
             channel_id = channel_id_match.group(1)
         else:
-            # إذا كان الرابط يحتوي على معرّف القناة مباشرة مثل /channel/UC...
             channel_id_direct = re.search(r'channel/(UC[A-Za-z0-9_-]+)', channel_line)
             if channel_id_direct:
                 channel_id = channel_id_direct.group(1)
@@ -126,10 +121,10 @@ async def main():
                 if video_id:
                     entries.append({'title': title, 'id': video_id, 'link': f"https://www.youtube.com/watch?v={video_id}"})
 
-            successful_channels += 1 # احتساب نجاح الاتصال بالقناة
+            successful_channels += 1
         except Exception as api_error:
             print(f"❌ خطأ في القناة أو صيغة الرابط خاطئة: {api_error}")
-            failed_channels += 1 # احتساب فشل القناة بسبب الصيغة أو الحظر
+            failed_channels += 1
             continue
 
         if not entries: continue
@@ -144,7 +139,6 @@ async def main():
             v_id = entry['id']
             video_link = entry['link']
 
-            # المقارنة الآن تتم بالـ ID الصافي وليس الرابط الكامل لتوفير الذاكرة والوقت
             if v_id in downloaded: continue 
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
@@ -156,111 +150,98 @@ async def main():
                 report_items.append(f"❌ <b>فشل إرسال الرابط إلى البوت:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
                 continue
 
-            try:
-                start_time = time.time()
-                is_done = False
-                is_skipped = False
-                skip_low_quality_report = False  # علم لتخطي تقرير الجودة المنخفضة للـ Shorts
-                downloaded_quality = "غير معروفة"
-                highest_res_found = None 
+            # --- حلقة الانتظار التسلسلي الصارم للمقطع الحالي ---
+            video_start_time = time.time()
+            button_clicked = False
+            is_completed = False
+            downloaded_quality = "غير معروفة"
+            PROCESS_TIMEOUT = 480  # مهلة 8 دقائق للفيديو الواحد
 
-                while (time.time() - start_time) < 90:
-                    await asyncio.sleep(2)
+            while (time.time() - video_start_time) < PROCESS_TIMEOUT:
+                await asyncio.sleep(3)
+                
+                try:
                     async for message in client.iter_messages(target_bot, limit=5):
-                        if message.id <= sent_msg.id: continue
+                        if message.id <= sent_msg.id: 
+                            continue
 
-                        msg_text = message.text.lower() if message.text else ""
+                        msg_text = (message.text or message.caption or "").lower()
 
-                        if any(word in msg_text for word in error_keywords):
-                            save_to_history(v_id)      # حفظ الـ ID فقط
-                            downloaded.add(v_id)       # تحديث الذاكرة فوراً
+                        # 1. فحص الاستثناء: رسالة الحجم الكبير جداً (التي تحتوي على الإيموجي 😐 لكن تم تنزيلها)
+                        if "حجمه كبير" in msg_text or "لا يمكن إرساله عبر التلغرام" in msg_text or "كبيرًا جدًا بحيث" in msg_text:
+                            save_to_history(v_id)
+                            downloaded.add(v_id)
                             new_videos_found += 1
-                            is_skipped = True
-                            is_done = True
+                            is_completed = True
+                            report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً ولا يمكن للبوت إرساله:</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                            print(f"⚠️ حجم كبير جداً: {entry['title']}")
+                            break
+
+                        # 2. فحص الفشل الصريح عبر الإيموجي 😐 أو كلمات الأخطاء الأخرى
+                        if '😐' in msg_text or any(word in msg_text for word in error_keywords):
+                            save_to_history(v_id)
+                            downloaded.add(v_id)
+                            new_videos_found += 1
+                            is_completed = True
                             report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                            print(f"❌ فشل التحميل من البوت: {entry['title']}")
                             break
 
-                        if any(word in msg_text for word in success_keywords):
-                            downloaded_quality = "تلقائي (رسالة نجاح)"
-                            is_done = True
-                            break
-
-                        if message.buttons:
+                        # 3. فحص الأزرار والضغط على الجودة المتاحة (يتجاوز الإيموجيات ⚡️/🎞️)
+                        if not button_clicked and message.buttons:
                             detected_buttons = []
                             valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
 
                             for row in message.buttons:
                                 for btn in row:
                                     btn_text = btn.text if btn.text else ""
-                                    numbers_in_btn = re.findall(r'\d+', btn_text)
-                                    for num_str in numbers_in_btn:
-                                        num_val = int(num_str)
+                                    match = re.search(r'(\d+)', btn_text)
+                                    if match:
+                                        num_val = int(match.group(1))
                                         if num_val in valid_resolutions:
                                             detected_buttons.append((num_val, btn))
 
                             if detected_buttons:
-                                res_dict = {x[0]: x[1] for x in detected_buttons}
-                                btn_to_click = None
-                                highest_res = None
-
-                                # 🟢 الفحص المباشر بدون مقارنة أو فرز الأرقام الأخرى الأعلى:
-                                if 854 in res_dict:
-                                    btn_to_click = res_dict[854]
-                                    highest_res = 854
-                                elif 640 in res_dict:
-                                    btn_to_click = res_dict[640]
-                                    highest_res = 640
-                                    skip_low_quality_report = True  # تخطي الإبلاغ لأن الـ 640p هي خيار متعمد هنا
-                                else:
-                                    detected_buttons.sort(key=lambda x: x[0], reverse=True)
-                                    highest_res, btn_to_click = detected_buttons[0]
-
+                                detected_buttons.sort(key=lambda x: x[0], reverse=True)
+                                highest_res, btn_to_click = detected_buttons[0]
                                 await btn_to_click.click()
-                                downloaded_quality = btn_to_click.text 
-                                highest_res_found = highest_res 
-                                is_done = True
-                                break
-
-                            if (time.time() - start_time) > 40:
+                                downloaded_quality = f"{highest_res}p"
+                                button_clicked = True
+                                print(f"🔘 تم ضغط زر الجودة: {downloaded_quality}")
+                            else:
                                 await message.click(0)
-                                downloaded_quality = "تلقائي (الزر الأول احتياطياً)"
-                                highest_res_found = 0 
-                                is_done = True
-                                break
+                                downloaded_quality = "زر تلقائي"
+                                button_clicked = True
+                                print("🔘 تم اختيار أول زر كخيار احتياطي")
 
-                    if is_done: break
+                        # 4. فحص استلام ملف الفيديو المكتمل والتحقق من التوقيع أو الميديا
+                        raw_text = message.text or message.caption or ""
+                        if message.media and ("@botyoutubedownloadbot" in msg_text or "@BotYouTubeDownloadBot" in raw_text):
+                            downloaded.add(v_id)
+                            save_to_history(v_id)
+                            new_videos_found += 1
+                            is_completed = True
+                            print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
+                            break
 
-                # معالجة النتائج بعد انتهاء حلقة الفحص والانتظار
-                if is_done and not is_skipped:
-                    save_to_history(v_id)      # حفظ الـ ID فقط
-                    downloaded.add(v_id)       # تحديث الذاكرة فوراً
-                    new_videos_found += 1
+                        elif message.media and button_clicked:
+                            downloaded.add(v_id)
+                            save_to_history(v_id)
+                            new_videos_found += 1
+                            is_completed = True
+                            print(f"✅ تم استلام ملف الميديا بنجاح: {entry['title']}")
+                            break
 
-                    if highest_res_found is not None and highest_res_found < 1080 and highest_res_found not in [720, 854]:
-                        if not skip_low_quality_report:
-                            report_items.append(f"⚠️ <b>جودة منخفضة جداً:</b> <code>{downloaded_quality}</code>\n🔗 {video_link}")
+                except Exception as loop_err:
+                    print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
 
-                    await asyncio.sleep(5)
-                    async for m in client.iter_messages(target_bot, limit=3):
-                        if m.buttons:
-                            audio_pressed = False
-                            for row in m.buttons:
-                                for btn in row:
-                                    if 'original' in btn.text.lower():
-                                        await btn.click()
-                                        audio_pressed = True
-                                        break
-                                if audio_pressed: break
-                            if audio_pressed: break
+                if is_completed:
+                    break
 
-                elif not is_done:
-                    report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة الـ 90 ثانية دون استجابة البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+            if not is_completed:
+                report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام الفيديو من البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
 
-            except Exception as e:
-                print(f"❌ خطأ أثناء معالجة الرابط: {e}")
-                report_items.append(f"❌ <b>خطأ نظام داخلي أثناء معالجة الرابط:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
-
-            await asyncio.sleep(6)
+            await asyncio.sleep(3)
 
     # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
     status_msg = "⚠️ تم التوقف جزئياً لحماية الوقت" if time_limit_reached else "بنجاح كامل"
@@ -274,18 +255,18 @@ async def main():
     )
     await send_safe_message(second_account, detailed_summary, parse_mode='html')
 
-    # ✉️ إرسال تقرير الحالات الخاصة وآلية تجزئة الرسائل بحسب طول النص الأقصى
+    # ✉️ إرسال تقرير الحالات الفاشلة وتجزئة الرسائل
     if report_items:
-        header = "📊 <b>تقرير الحالات الخاصة (الروابط الفاشلة / الجودات المنخفضة المرفوضة):</b>\n\n"
+        header = "📊 <b>تقرير الحالات الخاصة والروابط الفاشلة:</b>\n\n"
         current_chunk = header
-        
+
         for item in report_items:
             if len(current_chunk) + len(item) + 2 > 3800:
                 await send_safe_message(second_account, current_chunk, parse_mode='html')
                 current_chunk = header + item + "\n\n"
             else:
                 current_chunk += item + "\n\n"
-        
+
         if current_chunk != header:
             await send_safe_message(second_account, current_chunk, parse_mode='html')
 
