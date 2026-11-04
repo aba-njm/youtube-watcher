@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بالمنطق الصارم (الانتظار حتى وصول الحقوق أو الفشل التام)...")
+    print("🚀 بدء التشغيل بنظام إعادة المحاولة الذكي عند خطأ جلب المعلومات...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -80,7 +80,7 @@ async def main():
     failed_channels = 0
 
     report_items = []
-    error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright', 'لم يتم العثور']
+    error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright']
 
     time_limit_reached = False 
 
@@ -143,96 +143,127 @@ async def main():
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
 
-            try:
-                sent_msg = await client.send_message(target_bot, video_link)
-            except Exception as e:
-                print(f"❌ فشل إرسال الرابط للبوت ({target_bot}): {e}")
-                report_items.append(f"❌ <b>فشل إرسال الرابط إلى البوت:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
-                continue
+            MAX_ATTEMPTS = 3
+            video_done = False
 
-            # --- حلقة الانتظار التسلسلي الصارم للمقطع الحالي ---
-            video_start_time = time.time()
-            button_clicked = False
-            is_completed = False
-            downloaded_quality = "غير معروفة"
-            PROCESS_TIMEOUT = 480  # مهلة أقصاها 8 دقائق للفيديو الواحد
-
-            while (time.time() - video_start_time) < PROCESS_TIMEOUT:
-                await asyncio.sleep(4)  # فحص كل 4 ثوانٍ
-                
+            # --- حلقة محاولات الإرسال (حتى 3 محاولات) ---
+            for attempt in range(1, MAX_ATTEMPTS + 1):
                 try:
-                    async for message in client.iter_messages(target_bot, limit=5):
-                        if message.id <= sent_msg.id: 
-                            continue
-
-                        msg_text = (message.text or message.caption or "").lower()
-
-                        # 🟢 الحالة (2): شرط النجاح القاطع - ظهور حقوق البوت
-                        if "@botyoutubedownloadbot" in msg_text:
-                            downloaded.add(v_id)
-                            save_to_history(v_id)
-                            new_videos_found += 1
-                            is_completed = True
-                            print(f"✅ تم استلام الفيديو بنجاح واكتمال التحميل ({downloaded_quality}): {entry['title']}")
-                            break
-
-                        # 🔴 الحالة (1 - أ): استثناء رسالة الحجم الكبير جداً
-                        if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
-                            save_to_history(v_id)
-                            downloaded.add(v_id)
-                            new_videos_found += 1
-                            is_completed = True
-                            report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً:</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                            print(f"⚠️ حجم كبير جداً: {entry['title']}")
-                            break
-
-                        # 🔴 الحالة (1 - ب): الفشل الصريح بحضور إيموجي 😐 أو كلمات الأخطاء
-                        if '😐' in msg_text or any(word in msg_text for word in error_keywords):
-                            save_to_history(v_id)
-                            downloaded.add(v_id)
-                            new_videos_found += 1
-                            is_completed = True
-                            report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                            print(f"❌ فشل التحميل من البوت: {entry['title']}")
-                            break
-
-                        # 🔘 ضغط زر الجودة (يتم لمرة واحدة فقط ويستمر في الانتظار دون الخروج من الحلقة)
-                        if not button_clicked and message.buttons:
-                            detected_buttons = []
-                            valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
-
-                            for row in message.buttons:
-                                for btn in row:
-                                    btn_text = btn.text if btn.text else ""
-                                    match = re.search(r'(\d+)', btn_text)
-                                    if match:
-                                        num_val = int(match.group(1))
-                                        if num_val in valid_resolutions:
-                                            detected_buttons.append((num_val, btn))
-
-                            if detected_buttons:
-                                detected_buttons.sort(key=lambda x: x[0], reverse=True)
-                                highest_res, btn_to_click = detected_buttons[0]
-                                await btn_to_click.click()
-                                downloaded_quality = f"{highest_res}p"
-                                button_clicked = True
-                                print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، وجاري انتظار الرفع...")
-                            else:
-                                await message.click(0)
-                                downloaded_quality = "زر تلقائي"
-                                button_clicked = True
-                                print("🔘 تم اختيار أول زر احتياطياً، وجاري انتظار الرفع...")
-
-                except Exception as loop_err:
-                    print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
-
-                if is_completed:
+                    sent_msg = await client.send_message(target_bot, video_link)
+                except Exception as e:
+                    print(f"❌ فشل إرسال الرابط للبوت ({target_bot}): {e}")
+                    report_items.append(f"❌ <b>فشل إرسال الرابط إلى البوت:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
                     break
 
-            if not is_completed:
-                report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام حقوق البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                video_start_time = time.time()
+                button_clicked = False
+                is_completed = False
+                should_retry = False
+                downloaded_quality = "غير معروفة"
+                PROCESS_TIMEOUT = 480  # مهلة أقصاها 8 دقائق لكل محاولة
 
-            # استراحة بسيطة قبل الفيديو التالي
+                while (time.time() - video_start_time) < PROCESS_TIMEOUT:
+                    await asyncio.sleep(4)
+                    
+                    try:
+                        async for message in client.iter_messages(target_bot, limit=5):
+                            if message.id <= sent_msg.id: 
+                                continue
+
+                            msg_text = (message.text or message.caption or "").lower()
+
+                            # 🟢 1. شرط النجاح القاطع - ظهور حقوق البوت
+                            if "@botyoutubedownloadbot" in msg_text:
+                                downloaded.add(v_id)
+                                save_to_history(v_id)
+                                new_videos_found += 1
+                                is_completed = True
+                                video_done = True
+                                print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
+                                break
+
+                            # 🔴 2. استثناء رسالة الحجم الكبير
+                            if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
+                                save_to_history(v_id)
+                                downloaded.add(v_id)
+                                new_videos_found += 1
+                                is_completed = True
+                                video_done = True
+                                report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً:</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                                print(f"⚠️ حجم كبير جداً: {entry['title']}")
+                                break
+
+                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة محاولة إذا تيسر
+                            if "لم أتمكن من الحصول على معلومات" in msg_text:
+                                if attempt < MAX_ATTEMPTS:
+                                    print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
+                                    should_retry = True
+                                    is_completed = True
+                                    break
+                                else:
+                                    # المحاولة الثالثة والأخيرة وفشلت
+                                    save_to_history(v_id)
+                                    downloaded.add(v_id)
+                                    new_videos_found += 1
+                                    is_completed = True
+                                    video_done = True
+                                    report_items.append(f"❌ <b>فشل التحميل بعد {MAX_ATTEMPTS} محاولات (تعذر الحصول على معلومات):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                                    print(f"❌ فشل نهائي بعد {MAX_ATTEMPTS} محاولات: {entry['title']}")
+                                    break
+
+                            # 🔴 4. أخطاء عامة أخرى تمنع إعادة المحاولة (مثل الفشل الصريح)
+                            if '😐' in msg_text or any(word in msg_text for word in error_keywords):
+                                save_to_history(v_id)
+                                downloaded.add(v_id)
+                                new_videos_found += 1
+                                is_completed = True
+                                video_done = True
+                                report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                                print(f"❌ فشل التحميل من البوت: {entry['title']}")
+                                break
+
+                            # 🔘 5. ضغط زر الجودة
+                            if not button_clicked and message.buttons:
+                                detected_buttons = []
+                                valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
+
+                                for row in message.buttons:
+                                    for btn in row:
+                                        btn_text = btn.text if btn.text else ""
+                                        match = re.search(r'(\d+)', btn_text)
+                                        if match:
+                                            num_val = int(match.group(1))
+                                            if num_val in valid_resolutions:
+                                                detected_buttons.append((num_val, btn))
+
+                                if detected_buttons:
+                                    detected_buttons.sort(key=lambda x: x[0], reverse=True)
+                                    highest_res, btn_to_click = detected_buttons[0]
+                                    await btn_to_click.click()
+                                    downloaded_quality = f"{highest_res}p"
+                                    button_clicked = True
+                                    print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، وجاري انتظار الرفع...")
+                                else:
+                                    await message.click(0)
+                                    downloaded_quality = "زر تلقائي"
+                                    button_clicked = True
+                                    print("🔘 تم اختيار أول زر احتياطياً، وجاري انتظار الرفع...")
+
+                    except Exception as loop_err:
+                        print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
+
+                    if is_completed:
+                        break
+
+                if should_retry:
+                    await asyncio.sleep(3)
+                    continue  # ينفذ المحاولة التالية عبر حلقة for attempt
+
+                if video_done or not is_completed:
+                    if not is_completed:
+                        report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام حقوق البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                    break  # خروج من حلقة المحاولات والانتقال للفيديو التالي
+
             await asyncio.sleep(2)
 
     # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
