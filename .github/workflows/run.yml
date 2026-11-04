@@ -1,9 +1,9 @@
 name: YouTube Auto Downloader
 
 on:
-  Schedule:
-    - cron: '*/15 * * * *' # تشغيل كل ١٥ دقيقة تلقائياً
-  workflow_dispatch: # يتيح لك تشغيله يدوياً كأداة
+  schedule:
+    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لتفادي استهلاك الدقائق والتداخل
+  workflow_dispatch: # يتيح لك تشغيله يدوياً
 
 permissions:
   contents: write
@@ -18,6 +18,8 @@ jobs:
     steps:
     - name: جلب ملفات الكود
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # جلب التاريخ كاملاً لضمان نجاح عملية الـ git push
 
     - name: تثبيت بايثون
       uses: actions/setup-python@v5
@@ -41,6 +43,7 @@ jobs:
       run: |
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
+        touch history.txt
         git add history.txt
         git commit -m "🤖 تحديث سجل الفيديوهات المحملة تلقائياً [skip ci]" || echo "لا توجد تغييرات للحفظ"
         git pull origin HEAD --rebase
