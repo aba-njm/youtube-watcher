@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بنظام إعادة المحاولة الذكي عند خطأ جلب المعلومات...")
+    print("🚀 بدء التشغيل (عدم حفظ الفيديوهات الفاشلة في history.txt لإتاحة إعادة محاولتها)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -146,7 +146,6 @@ async def main():
             MAX_ATTEMPTS = 3
             video_done = False
 
-            # --- حلقة محاولات الإرسال (حتى 3 محاولات) ---
             for attempt in range(1, MAX_ATTEMPTS + 1):
                 try:
                     sent_msg = await client.send_message(target_bot, video_link)
@@ -172,7 +171,7 @@ async def main():
 
                             msg_text = (message.text or message.caption or "").lower()
 
-                            # 🟢 1. شرط النجاح القاطع - ظهور حقوق البوت
+                            # 🟢 1. شرط النجاح القاطع -> حفظ في history.txt
                             if "@botyoutubedownloadbot" in msg_text:
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -182,18 +181,18 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🔴 2. استثناء رسالة الحجم الكبير
+                            # 🔴 2. استثناء رسالة الحجم الكبير جداً -> حفظ في history.txt لأنه لن يصغر مستقبلاً
                             if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
-                                save_to_history(v_id)
                                 downloaded.add(v_id)
+                                save_to_history(v_id)
                                 new_videos_found += 1
                                 is_completed = True
                                 video_done = True
                                 report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً:</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                                print(f"⚠️ حجم كبير جداً: {entry['title']}")
+                                print(f"⚠️ حجم كبير جداً (تم استبعاده مستقبلاً): {entry['title']}")
                                 break
 
-                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة محاولة إذا تيسر
+                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة محاولة أو تجاوزه بدون حفظ
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
                                     print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
@@ -201,25 +200,19 @@ async def main():
                                     is_completed = True
                                     break
                                 else:
-                                    # المحاولة الثالثة والأخيرة وفشلت
-                                    save_to_history(v_id)
-                                    downloaded.add(v_id)
-                                    new_videos_found += 1
+                                    # فشل نهائي للمرة الثالثة -> لا يحفظ في الـ history ليُجرب في الدورة القادمة
                                     is_completed = True
                                     video_done = True
                                     report_items.append(f"❌ <b>فشل التحميل بعد {MAX_ATTEMPTS} محاولات (تعذر الحصول على معلومات):</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                                    print(f"❌ فشل نهائي بعد {MAX_ATTEMPTS} محاولات: {entry['title']}")
+                                    print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 4. أخطاء عامة أخرى تمنع إعادة المحاولة (مثل الفشل الصريح)
+                            # 🔴 4. أخطاء عامة أخرى -> تجاوزه دون الحفظ في history.txt
                             if '😐' in msg_text or any(word in msg_text for word in error_keywords):
-                                save_to_history(v_id)
-                                downloaded.add(v_id)
-                                new_videos_found += 1
                                 is_completed = True
                                 video_done = True
                                 report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                                print(f"❌ فشل التحميل من البوت: {entry['title']}")
+                                print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
                             # 🔘 5. ضغط زر الجودة
@@ -257,12 +250,12 @@ async def main():
 
                 if should_retry:
                     await asyncio.sleep(3)
-                    continue  # ينفذ المحاولة التالية عبر حلقة for attempt
+                    continue
 
                 if video_done or not is_completed:
                     if not is_completed:
                         report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام حقوق البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
-                    break  # خروج من حلقة المحاولات والانتقال للفيديو التالي
+                    break
 
             await asyncio.sleep(2)
 
