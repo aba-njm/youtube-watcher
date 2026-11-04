@@ -56,9 +56,9 @@ async def main():
     await client.start()
 
     script_start_time = time.time()
-    MAX_RUN_TIME = 19800  # 5.5 ساعات
+    MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بنظام التتابع الصارم والتعرف على استثناءات الإيموجي...")
+    print("🚀 بدء التشغيل بالمنطق الصارم (الانتظار حتى وصول الحقوق أو الفشل التام)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -155,10 +155,10 @@ async def main():
             button_clicked = False
             is_completed = False
             downloaded_quality = "غير معروفة"
-            PROCESS_TIMEOUT = 480  # مهلة 8 دقائق للفيديو الواحد
+            PROCESS_TIMEOUT = 480  # مهلة أقصاها 8 دقائق للفيديو الواحد
 
             while (time.time() - video_start_time) < PROCESS_TIMEOUT:
-                await asyncio.sleep(3)
+                await asyncio.sleep(4)  # فحص كل 4 ثوانٍ
                 
                 try:
                     async for message in client.iter_messages(target_bot, limit=5):
@@ -167,17 +167,26 @@ async def main():
 
                         msg_text = (message.text or message.caption or "").lower()
 
-                        # 1. فحص الاستثناء: رسالة الحجم الكبير جداً (التي تحتوي على الإيموجي 😐 لكن تم تنزيلها)
-                        if "حجمه كبير" in msg_text or "لا يمكن إرساله عبر التلغرام" in msg_text or "كبيرًا جدًا بحيث" in msg_text:
+                        # 🟢 الحالة (2): شرط النجاح القاطع - ظهور حقوق البوت
+                        if "@botyoutubedownloadbot" in msg_text:
+                            downloaded.add(v_id)
+                            save_to_history(v_id)
+                            new_videos_found += 1
+                            is_completed = True
+                            print(f"✅ تم استلام الفيديو بنجاح واكتمال التحميل ({downloaded_quality}): {entry['title']}")
+                            break
+
+                        # 🔴 الحالة (1 - أ): استثناء رسالة الحجم الكبير جداً
+                        if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                             save_to_history(v_id)
                             downloaded.add(v_id)
                             new_videos_found += 1
                             is_completed = True
-                            report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً ولا يمكن للبوت إرساله:</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                            report_items.append(f"⚠️ <b>تم تحميل الفيديو ولكن حجمه كبير جداً:</b>\n📝 {entry['title']}\n🔗 {video_link}")
                             print(f"⚠️ حجم كبير جداً: {entry['title']}")
                             break
 
-                        # 2. فحص الفشل الصريح عبر الإيموجي 😐 أو كلمات الأخطاء الأخرى
+                        # 🔴 الحالة (1 - ب): الفشل الصريح بحضور إيموجي 😐 أو كلمات الأخطاء
                         if '😐' in msg_text or any(word in msg_text for word in error_keywords):
                             save_to_history(v_id)
                             downloaded.add(v_id)
@@ -187,7 +196,7 @@ async def main():
                             print(f"❌ فشل التحميل من البوت: {entry['title']}")
                             break
 
-                        # 3. فحص الأزرار والضغط على الجودة المتاحة (يتجاوز الإيموجيات ⚡️/🎞️)
+                        # 🔘 ضغط زر الجودة (يتم لمرة واحدة فقط ويستمر في الانتظار دون الخروج من الحلقة)
                         if not button_clicked and message.buttons:
                             detected_buttons = []
                             valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
@@ -207,30 +216,12 @@ async def main():
                                 await btn_to_click.click()
                                 downloaded_quality = f"{highest_res}p"
                                 button_clicked = True
-                                print(f"🔘 تم ضغط زر الجودة: {downloaded_quality}")
+                                print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، وجاري انتظار الرفع...")
                             else:
                                 await message.click(0)
                                 downloaded_quality = "زر تلقائي"
                                 button_clicked = True
-                                print("🔘 تم اختيار أول زر كخيار احتياطي")
-
-                        # 4. فحص استلام ملف الفيديو المكتمل والتحقق من التوقيع أو الميديا
-                        raw_text = message.text or message.caption or ""
-                        if message.media and ("@botyoutubedownloadbot" in msg_text or "@BotYouTubeDownloadBot" in raw_text):
-                            downloaded.add(v_id)
-                            save_to_history(v_id)
-                            new_videos_found += 1
-                            is_completed = True
-                            print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
-                            break
-
-                        elif message.media and button_clicked:
-                            downloaded.add(v_id)
-                            save_to_history(v_id)
-                            new_videos_found += 1
-                            is_completed = True
-                            print(f"✅ تم استلام ملف الميديا بنجاح: {entry['title']}")
-                            break
+                                print("🔘 تم اختيار أول زر احتياطياً، وجاري انتظار الرفع...")
 
                 except Exception as loop_err:
                     print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
@@ -239,9 +230,10 @@ async def main():
                     break
 
             if not is_completed:
-                report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام الفيديو من البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام حقوق البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
 
-            await asyncio.sleep(3)
+            # استراحة بسيطة قبل الفيديو التالي
+            await asyncio.sleep(2)
 
     # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
     status_msg = "⚠️ تم التوقف جزئياً لحماية الوقت" if time_limit_reached else "بنجاح كامل"
