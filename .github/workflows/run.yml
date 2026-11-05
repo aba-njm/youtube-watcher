@@ -1,8 +1,8 @@
-name: YouTube Auto Downloader
+Name: YouTube Auto Downloader
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لتفادي استهلاك الدقائق والتداخل
+    - cron: '*/15 * * * *' # تشغيل تلقائي كل 15 دقيقة
   workflow_dispatch: # يتيح لك تشغيله يدوياً
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
     - name: جلب ملفات الكود
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # جلب التاريخ كاملاً لضمان نجاح عملية الـ git push
+        fetch-depth: 0
 
     - name: تثبيت بايثون
       uses: actions/setup-python@v5
