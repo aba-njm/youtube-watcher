@@ -56,9 +56,9 @@ async def main():
     await client.start()
 
     script_start_time = time.time()
-    MAX_RUN_TIME = 18000  # 5 ساعات
+    MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
 
-    print("🚀 بدء التشغيل (عدم حفظ الفيديوهات الفاشلة في history.txt لإتاحة إعادة محاولتها)...")
+    print("🚀 بدء التشغيل بالمنطق الشرطي المباشر (دون عدادات زمنية)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -154,16 +154,15 @@ async def main():
                     report_items.append(f"❌ <b>فشل إرسال الرابط إلى البوت:</b>\n<code>{str(e)}</code>\n🔗 {video_link}")
                     break
 
-                video_start_time = time.time()
                 button_clicked = False
                 is_completed = False
                 should_retry = False
                 downloaded_quality = "غير معروفة"
-                PROCESS_TIMEOUT = 480  # مهلة أقصاها 8 دقائق لكل محاولة
 
-                while (time.time() - video_start_time) < PROCESS_TIMEOUT:
+                # حلقة انتظار مطلقة دون أي عداد زمني
+                while True:
                     await asyncio.sleep(4)
-                    
+
                     try:
                         async for message in client.iter_messages(target_bot, limit=5):
                             if message.id <= sent_msg.id: 
@@ -171,7 +170,7 @@ async def main():
 
                             msg_text = (message.text or message.caption or "").lower()
 
-                            # 🟢 1. شرط النجاح القاطع -> حفظ في history.txt
+                            # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
                             if "@botyoutubedownloadbot" in msg_text:
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -181,7 +180,7 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🔴 2. استثناء رسالة الحجم الكبير جداً -> حفظ في history.txt لأنه لن يصغر مستقبلاً
+                            # 🔴 2. استثناء رسالة الحجم الكبير جداً (حفظ واستبعاد)
                             if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -192,7 +191,7 @@ async def main():
                                 print(f"⚠️ حجم كبير جداً (تم استبعاده مستقبلاً): {entry['title']}")
                                 break
 
-                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة محاولة أو تجاوزه بدون حفظ
+                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة المحاولة
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
                                     print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
@@ -200,14 +199,13 @@ async def main():
                                     is_completed = True
                                     break
                                 else:
-                                    # فشل نهائي للمرة الثالثة -> لا يحفظ في الـ history ليُجرب في الدورة القادمة
                                     is_completed = True
                                     video_done = True
                                     report_items.append(f"❌ <b>فشل التحميل بعد {MAX_ATTEMPTS} محاولات (تعذر الحصول على معلومات):</b>\n📝 {entry['title']}\n🔗 {video_link}")
                                     print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 4. أخطاء عامة أخرى -> تجاوزه دون الحفظ في history.txt
+                            # 🔴 4. أخطاء عامة أو إيموجي الفشل 😐 (تجاوز دون حفظ)
                             if '😐' in msg_text or any(word in msg_text for word in error_keywords):
                                 is_completed = True
                                 video_done = True
@@ -215,7 +213,7 @@ async def main():
                                 print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
-                            # 🔘 5. ضغط زر الجودة
+                            # 🔘 5. اختيار وضغط زر الجودة (مرة واحدة فقط)
                             if not button_clicked and message.buttons:
                                 detected_buttons = []
                                 valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
@@ -235,12 +233,12 @@ async def main():
                                     await btn_to_click.click()
                                     downloaded_quality = f"{highest_res}p"
                                     button_clicked = True
-                                    print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، وجاري انتظار الرفع...")
+                                    print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، والانتظار مستمر...")
                                 else:
                                     await message.click(0)
                                     downloaded_quality = "زر تلقائي"
                                     button_clicked = True
-                                    print("🔘 تم اختيار أول زر احتياطياً، وجاري انتظار الرفع...")
+                                    print("🔘 تم اختيار أول زر احتياطياً، والانتظار مستمر...")
 
                     except Exception as loop_err:
                         print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
@@ -252,9 +250,7 @@ async def main():
                     await asyncio.sleep(3)
                     continue
 
-                if video_done or not is_completed:
-                    if not is_completed:
-                        report_items.append(f"❌ <b>فشل التحميل (انتهت مهلة 8 دقائق دون استلام حقوق البوت):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                if video_done:
                     break
 
             await asyncio.sleep(2)
