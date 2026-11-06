@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
 
-    print("🚀 بدء التشغيل بالمنطق الشرطي المباشر (دون عدادات زمنية)...")
+    print("🚀 بدء التشغيل بدعم اعتبار رسائل البث المباشر كعمليات ناجحة...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -180,7 +180,17 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🔴 2. استثناء رسالة الحجم الكبير جداً (حفظ واستبعاد)
+                            # 🟢 2. استثناء البث المباشر (يعتبر الفيديو ناجحاً ويحفظ في history.txt)
+                            if "البث المباشر على وشك" in msg_text or "البث المباشر" in msg_text:
+                                downloaded.add(v_id)
+                                save_to_history(v_id)
+                                new_videos_found += 1
+                                is_completed = True
+                                video_done = True
+                                print(f"🟢 بث مباشر على وشك أن يبدأ (تم اعتباره ناجحاً ومكتملاً): {entry['title']}")
+                                break
+
+                            # 🔴 3. استثناء رسالة الحجم الكبير جداً (حفظ واستبعاد)
                             if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -191,7 +201,7 @@ async def main():
                                 print(f"⚠️ حجم كبير جداً (تم استبعاده مستقبلاً): {entry['title']}")
                                 break
 
-                            # 🔄 3. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة المحاولة
+                            # 🔄 4. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة المحاولة
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
                                     print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
@@ -205,7 +215,7 @@ async def main():
                                     print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 4. أخطاء عامة أو إيموجي الفشل 😐 (تجاوز دون حفظ)
+                            # 🔴 5. أخطاء عامة أو إيموجي الفشل 😐 (تجاوز دون حفظ)
                             if '😐' in msg_text or any(word in msg_text for word in error_keywords):
                                 is_completed = True
                                 video_done = True
@@ -213,7 +223,7 @@ async def main():
                                 print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
-                            # 🔘 5. اختيار وضغط زر الجودة (مرة واحدة فقط)
+                            # 🔘 6. اختيار وضغط زر الجودة (مرة واحدة فقط)
                             if not button_clicked and message.buttons:
                                 detected_buttons = []
                                 valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
