@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
 
-    print("🚀 بدء التشغيل بدعم اعتبار رسائل البث المباشر كعمليات ناجحة...")
+    print("🚀 بدء التشغيل بدعم فحص كافة الفيديوهات العلنية عبر الصفحات (Pagination)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -98,35 +98,61 @@ async def main():
             else:
                 channel_id = channel_line.strip()
 
-        print(f"\n📡 [{idx}/{len(channels)}] جاري جلب بيانات القناة: {channel_id}")
+        print(f"\n📡 [{idx}/{len(channels)}] جاري جلب كامل أرشيف القناة: {channel_id}")
 
         if channel_id.startswith('UC'):
             uploads_playlist_id = 'UU' + channel_id[2:]
         else:
             uploads_playlist_id = channel_id
 
-        api_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=10&key={youtube_api_key}"
+        entries = []
+        next_page_token = ""
+        stop_fetching_pages = False
+        channel_fetch_error = False
 
-        try:
-            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-            loop = asyncio.get_running_loop()
-            json_bytes = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
-            api_data = json.loads(json_bytes.decode('utf-8'))
+        # --- حلقة جلب جميع الصفحات للقناة ---
+        while True:
+            api_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={youtube_api_key}"
+            if next_page_token:
+                api_url += f"&pageToken={next_page_token}"
 
-            entries = []
-            for item in api_data.get('items', []):
-                snippet = item.get('snippet', {})
-                video_id = snippet.get('resourceId', {}).get('videoId')
-                title = snippet.get('title', 'محتوى بدون عنوان')
-                if video_id:
-                    entries.append({'title': title, 'id': video_id, 'link': f"https://www.youtube.com/watch?v={video_id}"})
+            try:
+                req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                loop = asyncio.get_running_loop()
+                json_bytes = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15).read())
+                api_data = json.loads(json_bytes.decode('utf-8'))
 
-            successful_channels += 1
-        except Exception as api_error:
-            print(f"❌ خطأ في القناة أو صيغة الرابط خاطئة: {api_error}")
+                items = api_data.get('items', [])
+                if not items:
+                    break
+
+                for item in items:
+                    snippet = item.get('snippet', {})
+                    video_id = snippet.get('resourceId', {}).get('videoId')
+                    title = snippet.get('title', 'محتوى بدون عنوان')
+                    
+                    if video_id:
+                        # إذا وصل السكربت لفيديو سبق تحويله، يتوقف عن جلب الصفحات الأقدم لهذه القناة
+                        if video_id in downloaded:
+                            stop_fetching_pages = True
+                        entries.append({'title': title, 'id': video_id, 'link': f"https://www.youtube.com/watch?v={video_id}"})
+
+                next_page_token = api_data.get('nextPageToken', '')
+                
+                # التوقف إذا لا توجد صفحات إضافية أو إذا وصلنا لفيديوهات قديمة معالجة سلفاً
+                if not next_page_token or stop_fetching_pages:
+                    break
+
+            except Exception as api_error:
+                print(f"❌ خطأ في القناة أو صيغة الرابط خاطئة: {api_error}")
+                channel_fetch_error = True
+                break
+
+        if channel_fetch_error:
             failed_channels += 1
             continue
 
+        successful_channels += 1
         if not entries: continue
 
         for entry in reversed(entries):
