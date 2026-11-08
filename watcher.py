@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
 
-    print("🚀 بدء التشغيل المباشر والسريع دون أي انتظارات زمنية ثابته...")
+    print("🚀 بدء التشغيل بالقوانين الجديدة (معالجة من الأحدث للأقدم، 10 محاولات، وتجميد 5 دقائق عند جلب المعلومات)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -127,7 +127,7 @@ async def main():
 
         if not entries: continue
 
-        # المعالجة المباشرة من الأحدث إلى الأقدم
+        # 1. المعالجة من الأحدث إلى الأقدم مباشرة بدون عكس المصفوفة
         for entry in entries:
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 time_limit_reached = True
@@ -142,7 +142,7 @@ async def main():
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
 
-            MAX_ATTEMPTS = 10
+            MAX_ATTEMPTS = 10  # 3. رفع عدد محاولات إعادة الإرسال إلى 10
             video_done = False
 
             for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -162,11 +162,12 @@ async def main():
                 info_start_time = 0
                 info_msg_id = 0
 
-                # حلقة فحص ردود البوت المباشرة بدقة استجابة فورية
+                # حلقة فحص ردود البوت
                 while True:
+                    await asyncio.sleep(4)
                     now = time.time()
 
-                    # حالة مهلة الـ 5 دقائق لرسالة جلب المعلومات عند عدم استجابة البوت
+                    # 4. الحالة الثانية: مر 5 دقائق دون أي استجابة جديدة من البوت بعد رسالة جلب المعلومات
                     if info_waiting and (now - info_start_time) >= 300:
                         print("⏰ مضت 5 دقائق دون أي استجابة بعد رسالة 'جلب المعلومات'. إرسال /restart وتجاوز الرابط...")
                         await send_safe_message(target_bot, "/restart")
@@ -182,15 +183,15 @@ async def main():
 
                             msg_text = (message.text or message.caption or "").strip()
 
-                            # التجميد: إذا كنا ننتظر استجابة بعد رسالة المعلومات ولم تصدر رسالة أحدث
+                            # 4. التجميد: إذا كنا في حالة تريث لرسالة المعلومات ولم تصدر رسالة أحدث، يتم التجاهل
                             if info_waiting and message.id <= info_msg_id:
                                 continue
 
-                            # استلام رسالة جديدة ينهي التجميد فوراً
+                            # عند وصول رسالة جديدة بعد رسالة المعلومات، يلغى التجميد وتطبق عليها شروط الفحص
                             if info_waiting and message.id > info_msg_id:
                                 info_waiting = False
 
-                            # 🟢 1. النجاح التام
+                            # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
                             if "@botyoutubedownloadbot" in msg_text.lower():
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -200,7 +201,7 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🟢 2. كشف البث المباشر (مطابقة دقيقة بالحرف للنص والإيموجي)
+                            # 🟢 2. كشف البث المباشر (مطابقة دقيقة للإيموجي والنص بالحرف)
                             if "😐" in msg_text and "هذا البث المباشر على وشك أن يبدأ." in msg_text:
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -210,7 +211,7 @@ async def main():
                                 print(f"🟢 بث مباشر على وشك أن يبدأ (تم اعتباره ناجحاً ومكتملاً): {entry['title']}")
                                 break
 
-                            # 🔴 3. حجم كبير جداً
+                            # 🔴 3. استثناء رسالة الحجم الكبير جداً
                             if any(k in msg_text.lower() for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -227,13 +228,13 @@ async def main():
                                     info_waiting = True
                                     info_start_time = now
                                     info_msg_id = message.id
-                                    print("⏳ تم كشف رسالة 'الحصول على معلومات الفيديو، انتظر قليلاً.' -> تجميد الأزرار ورصد المهلة...")
+                                    print("⏳ تم كشف رسالة 'الحصول على معلومات الفيديو، انتظر قليلاً.' -> تجميد ضغط الأزرار وبدء مؤقت الـ 5 دقائق...")
                                 continue
 
-                            # 🔄 5. خطأ "لم أتمكن من الحصول على معلومات" (10 محاولات)
+                            # 🔄 5. خطأ "لم أتمكن من الحصول على معلومات" -> 3. إعادة المحاولة حتى 10 محاولات
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
-                                    print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال فوراً...")
+                                    print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
                                     should_retry = True
                                     is_completed = True
                                     break
@@ -244,7 +245,7 @@ async def main():
                                     print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 6. كشف الفشل بالإيموجي 😐
+                            # 🔴 6. كشف الفشل بحضور الإيموجي 😐 فقط (ما لم تكن رسالة البث المباشر)
                             if '😐' in msg_text:
                                 is_completed = True
                                 video_done = True
@@ -252,7 +253,7 @@ async def main():
                                 print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
-                            # 🔘 7. ضغط زر الجودة (ممنوع الضغط أثناء انتظار معلومات الفيديو)
+                            # 🔘 7. اختيار وضغط زر الجودة (ممنوع الضغط أثناء تجميد معلومات الفيديو)
                             if not button_clicked and message.buttons and not info_waiting:
                                 detected_buttons = []
                                 valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
@@ -272,12 +273,12 @@ async def main():
                                     await btn_to_click.click()
                                     downloaded_quality = f"{highest_res}p"
                                     button_clicked = True
-                                    print(f"🔘 تم ضغط زر الجودة ({downloaded_quality}) فوراً...")
+                                    print(f"🔘 تم ضغط زر الجودة ({downloaded_quality})، والانتظار مستمر...")
                                 else:
                                     await message.click(0)
                                     downloaded_quality = "زر تلقائي"
                                     button_clicked = True
-                                    print("🔘 تم اختيار أول زر احتياطياً فوراً...")
+                                    print("🔘 تم اختيار أول زر احتياطياً، والانتظار مستمر...")
 
                     except Exception as loop_err:
                         print(f"⚠️ تنبيه أثناء الفحص الدوري: {loop_err}")
@@ -286,10 +287,13 @@ async def main():
                         break
 
                 if should_retry:
+                    await asyncio.sleep(3)
                     continue
 
                 if video_done:
                     break
+
+            await asyncio.sleep(2)
 
     # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
     status_msg = "⚠️ تم التوقف جزئياً لحماية الوقت" if time_limit_reached else "بنجاح كامل"
