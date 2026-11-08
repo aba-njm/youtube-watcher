@@ -2,7 +2,7 @@ import os
 import asyncio
 import json
 import time
-import re  # مكتبة الريجكس لاستخراج الأرقام الصافية وتجاوز الإيموجيات
+import re
 import urllib.request
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -56,9 +56,9 @@ async def main():
     await client.start()
 
     script_start_time = time.time()
-    MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
+    MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بالقوانين الجديدة (معالجة من الأحدث للأقدم، 10 محاولات، وتجميد 5 دقائق عند جلب المعلومات)...")
+    print("🚀 بدء التشغيل بأقصى سرعة استجابة متاح ومع الالتزام التام بكافة القوانين...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -127,7 +127,7 @@ async def main():
 
         if not entries: continue
 
-        # 1. المعالجة من الأحدث إلى الأقدم مباشرة بدون عكس المصفوفة
+        # القوانين: 1. المعالجة من الأحدث إلى الأقدم
         for entry in entries:
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 time_limit_reached = True
@@ -142,7 +142,7 @@ async def main():
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
 
-            MAX_ATTEMPTS = 10  # 3. رفع عدد محاولات إعادة الإرسال إلى 10
+            MAX_ATTEMPTS = 10  # القوانين: 3. 10 محاولات للخطأ
             video_done = False
 
             for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -162,12 +162,12 @@ async def main():
                 info_start_time = 0
                 info_msg_id = 0
 
-                # حلقة فحص ردود البوت
+                # حلقة سرسعة تفحص كل 1 ثانية فقط بدلاً من 4 ثوانٍ
                 while True:
-                    await asyncio.sleep(4)
+                    await asyncio.sleep(1)
                     now = time.time()
 
-                    # 4. الحالة الثانية: مر 5 دقائق دون أي استجابة جديدة من البوت بعد رسالة جلب المعلومات
+                    # القوانين: 4. انتظام الـ 5 دقائق دون استجابة -> إرسال /restart وتجاوز
                     if info_waiting and (now - info_start_time) >= 300:
                         print("⏰ مضت 5 دقائق دون أي استجابة بعد رسالة 'جلب المعلومات'. إرسال /restart وتجاوز الرابط...")
                         await send_safe_message(target_bot, "/restart")
@@ -183,15 +183,14 @@ async def main():
 
                             msg_text = (message.text or message.caption or "").strip()
 
-                            # 4. التجميد: إذا كنا في حالة تريث لرسالة المعلومات ولم تصدر رسالة أحدث، يتم التجاهل
+                            # التجميد: في انتظار الرسالة الجديدة بعد رسالة جلب المعلومات
                             if info_waiting and message.id <= info_msg_id:
                                 continue
 
-                            # عند وصول رسالة جديدة بعد رسالة المعلومات، يلغى التجميد وتطبق عليها شروط الفحص
                             if info_waiting and message.id > info_msg_id:
                                 info_waiting = False
 
-                            # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
+                            # 🟢 1. النجاح التام
                             if "@botyoutubedownloadbot" in msg_text.lower():
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -201,7 +200,7 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🟢 2. كشف البث المباشر (مطابقة دقيقة للإيموجي والنص بالحرف)
+                            # 🟢 2. القوانين: مطابقة البث المباشر بالحرف والرمز exact string
                             if "😐" in msg_text and "هذا البث المباشر على وشك أن يبدأ." in msg_text:
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -211,7 +210,7 @@ async def main():
                                 print(f"🟢 بث مباشر على وشك أن يبدأ (تم اعتباره ناجحاً ومكتملاً): {entry['title']}")
                                 break
 
-                            # 🔴 3. استثناء رسالة الحجم الكبير جداً
+                            # 🔴 3. رسالة الحجم الكبير
                             if any(k in msg_text.lower() for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
@@ -222,16 +221,16 @@ async def main():
                                 print(f"⚠️ حجم كبير جداً (تم استبعاده مستقبلاً): {entry['title']}")
                                 break
 
-                            # ⏳ 4. رسالة "الحصول على معلومات الفيديو، انتظر قليلاً."
+                            # ⏳ 4. القوانين: رسالة التجميد "الحصول على معلومات الفيديو، انتظر قليلاً."
                             if "الحصول على معلومات الفيديو، انتظر قليلاً." in msg_text:
                                 if not info_waiting or message.id > info_msg_id:
                                     info_waiting = True
                                     info_start_time = now
                                     info_msg_id = message.id
-                                    print("⏳ تم كشف رسالة 'الحصول على معلومات الفيديو، انتظر قليلاً.' -> تجميد ضغط الأزرار وبدء مؤقت الـ 5 دقائق...")
+                                    print("⏳ تم كشف رسالة 'الحصول على معلومات الفيديو، انتظر قليلاً.' -> تجميد الأزرار والانتظار 5 دقائق كحد أقصى...")
                                 continue
 
-                            # 🔄 5. خطأ "لم أتمكن من الحصول على معلومات" -> 3. إعادة المحاولة حتى 10 محاولات
+                            # 🔄 5. القوانين: خطأ "لم أتمكن من الحصول على معلومات" حتى 10 محاولات
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
                                     print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
@@ -245,7 +244,7 @@ async def main():
                                     print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 6. كشف الفشل بحضور الإيموجي 😐 فقط (ما لم تكن رسالة البث المباشر)
+                            # 🔴 6. كشف الفشل بالإيموجي 😐
                             if '😐' in msg_text:
                                 is_completed = True
                                 video_done = True
@@ -253,7 +252,7 @@ async def main():
                                 print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
-                            # 🔘 7. اختيار وضغط زر الجودة (ممنوع الضغط أثناء تجميد معلومات الفيديو)
+                            # 🔘 7. ضغط الزر (ممنوع أثناء التجميد)
                             if not button_clicked and message.buttons and not info_waiting:
                                 detected_buttons = []
                                 valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
@@ -287,15 +286,15 @@ async def main():
                         break
 
                 if should_retry:
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(2)
                     continue
 
                 if video_done:
                     break
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
-    # 📊 صياغة وإرسال التقرير الإحصائي الشامل لحسابك الثاني
+    # 📊 صياغة وإرسال التقرير الإحصائي
     status_msg = "⚠️ تم التوقف جزئياً لحماية الوقت" if time_limit_reached else "بنجاح كامل"
 
     detailed_summary = (
@@ -307,7 +306,7 @@ async def main():
     )
     await send_safe_message(second_account, detailed_summary, parse_mode='html')
 
-    # ✉️ إرسال تقرير الحالات الفاشلة وتجزئة الرسائل
+    # ✉️ إرسال تقرير الحالات الفاشلة
     if report_items:
         header = "📊 <b>تقرير الحالات الخاصة والروابط الفاشلة:</b>\n\n"
         current_chunk = header
