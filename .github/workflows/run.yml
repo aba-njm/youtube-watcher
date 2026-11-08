@@ -1,4 +1,4 @@
-Name: YouTube Auto Downloader
+name: YouTube Auto Downloader
 
 on:
   schedule:
