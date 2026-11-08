@@ -58,7 +58,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات (حد الأمان الكلي لجلسة السكربت)
 
-    print("🚀 بدء التشغيل لـ 50 فيديو لكل قناة كحد أقصى...")
+    print("🚀 بدء التشغيل بالقوانين الجديدة (معالجة من الأحدث للأقدم، 10 محاولات، وتجميد 5 دقائق عند جلب المعلومات)...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -80,8 +80,6 @@ async def main():
     failed_channels = 0
 
     report_items = []
-    error_keywords = ['عذراً', 'خطأ', 'فشل', 'private', 'unavailable', 'deleted', 'invalid', 'copyright']
-
     time_limit_reached = False 
 
     for idx, channel_line in enumerate(channels, 1):
@@ -105,7 +103,6 @@ async def main():
         else:
             uploads_playlist_id = channel_id
 
-        # طلب 50 فيديو في استدعاء واحد مباشر
         api_url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={uploads_playlist_id}&maxResults=50&key={youtube_api_key}"
 
         try:
@@ -130,7 +127,8 @@ async def main():
 
         if not entries: continue
 
-        for entry in reversed(entries):
+        # 1. المعالجة من الأحدث إلى الأقدم مباشرة بدون عكس المصفوفة
+        for entry in entries:
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 time_limit_reached = True
                 break
@@ -144,7 +142,7 @@ async def main():
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
 
-            MAX_ATTEMPTS = 3
+            MAX_ATTEMPTS = 10  # 3. رفع عدد محاولات إعادة الإرسال إلى 10
             video_done = False
 
             for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -160,19 +158,41 @@ async def main():
                 should_retry = False
                 downloaded_quality = "غير معروفة"
 
-                # حلقة انتظار مطلقة دون أي عداد زمني
+                info_waiting = False
+                info_start_time = 0
+                info_msg_id = 0
+
+                # حلقة فحص ردود البوت
                 while True:
                     await asyncio.sleep(4)
+                    now = time.time()
+
+                    # 4. الحالة الثانية: مر 5 دقائق دون أي استجابة جديدة من البوت بعد رسالة جلب المعلومات
+                    if info_waiting and (now - info_start_time) >= 300:
+                        print("⏰ مضت 5 دقائق دون أي استجابة بعد رسالة 'جلب المعلومات'. إرسال /restart وتجاوز الرابط...")
+                        await send_safe_message(target_bot, "/restart")
+                        is_completed = True
+                        video_done = True
+                        report_items.append(f"❌ <b>فشل التحميل (تجاوز 5 دقائق دون استجابة بعد جلب المعلومات):</b>\n📝 {entry['title']}\n🔗 {video_link}")
+                        break
 
                     try:
                         async for message in client.iter_messages(target_bot, limit=5):
                             if message.id <= sent_msg.id: 
                                 continue
 
-                            msg_text = (message.text or message.caption or "").lower()
+                            msg_text = (message.text or message.caption or "").strip()
+
+                            # 4. التجميد: إذا كنا في حالة تريث لرسالة المعلومات ولم تصدر رسالة أحدث، يتم التجاهل
+                            if info_waiting and message.id <= info_msg_id:
+                                continue
+
+                            # عند وصول رسالة جديدة بعد رسالة المعلومات، يلغى التجميد وتطبق عليها شروط الفحص
+                            if info_waiting and message.id > info_msg_id:
+                                info_waiting = False
 
                             # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
-                            if "@botyoutubedownloadbot" in msg_text:
+                            if "@botyoutubedownloadbot" in msg_text.lower():
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
                                 new_videos_found += 1
@@ -181,8 +201,8 @@ async def main():
                                 print(f"✅ تم استلام الفيديو بنجاح ({downloaded_quality}): {entry['title']}")
                                 break
 
-                            # 🟢 2. استثناء البث المباشر (يعتبر الفيديو ناجحاً ويحفظ في history.txt)
-                            if "البث المباشر على وشك" in msg_text or "البث المباشر" in msg_text:
+                            # 🟢 2. كشف البث المباشر (مطابقة دقيقة للإيموجي والنص بالحرف)
+                            if "😐" in msg_text and "هذا البث المباشر على وشك أن يبدأ." in msg_text:
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
                                 new_videos_found += 1
@@ -191,8 +211,8 @@ async def main():
                                 print(f"🟢 بث مباشر على وشك أن يبدأ (تم اعتباره ناجحاً ومكتملاً): {entry['title']}")
                                 break
 
-                            # 🔴 3. استثناء رسالة الحجم الكبير جداً (حفظ واستبعاد)
-                            if any(k in msg_text for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
+                            # 🔴 3. استثناء رسالة الحجم الكبير جداً
+                            if any(k in msg_text.lower() for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
                                 downloaded.add(v_id)
                                 save_to_history(v_id)
                                 new_videos_found += 1
@@ -202,7 +222,16 @@ async def main():
                                 print(f"⚠️ حجم كبير جداً (تم استبعاده مستقبلاً): {entry['title']}")
                                 break
 
-                            # 🔄 4. خطأ "لم أتمكن من الحصول على معلومات" -> إعادة المحاولة
+                            # ⏳ 4. رسالة "الحصول على معلومات الفيديو، انتظر قليلاً."
+                            if "الحصول على معلومات الفيديو، انتظر قليلاً." in msg_text:
+                                if not info_waiting or message.id > info_msg_id:
+                                    info_waiting = True
+                                    info_start_time = now
+                                    info_msg_id = message.id
+                                    print("⏳ تم كشف رسالة 'الحصول على معلومات الفيديو، انتظر قليلاً.' -> تجميد ضغط الأزرار وبدء مؤقت الـ 5 دقائق...")
+                                continue
+
+                            # 🔄 5. خطأ "لم أتمكن من الحصول على معلومات" -> 3. إعادة المحاولة حتى 10 محاولات
                             if "لم أتمكن من الحصول على معلومات" in msg_text:
                                 if attempt < MAX_ATTEMPTS:
                                     print(f"⚠️ فشل جلب المعلومات (المحاولة {attempt}/{MAX_ATTEMPTS}). جاري إعادة الإرسال...")
@@ -216,16 +245,16 @@ async def main():
                                     print(f"❌ فشل نهائي دون حفظ في الأرشيف: {entry['title']}")
                                     break
 
-                            # 🔴 5. أخطاء عامة أو إيموجي الفشل 😐 (تجاوز دون حفظ)
-                            if '😐' in msg_text or any(word in msg_text for word in error_keywords):
+                            # 🔴 6. كشف الفشل بحضور الإيموجي 😐 فقط (ما لم تكن رسالة البث المباشر)
+                            if '😐' in msg_text:
                                 is_completed = True
                                 video_done = True
                                 report_items.append(f"❌ <b>فشل التحميل من قِبل البوت:</b>\n📝 {entry['title']}\n🔗 {video_link}")
                                 print(f"❌ فشل التحميل دون حفظ في الأرشيف: {entry['title']}")
                                 break
 
-                            # 🔘 6. اختيار وضغط زر الجودة (مرة واحدة فقط)
-                            if not button_clicked and message.buttons:
+                            # 🔘 7. اختيار وضغط زر الجودة (ممنوع الضغط أثناء تجميد معلومات الفيديو)
+                            if not button_clicked and message.buttons and not info_waiting:
                                 detected_buttons = []
                                 valid_resolutions = [144, 240, 360, 480, 576, 640, 720, 854, 1080, 1440, 2160, 4320]
 
