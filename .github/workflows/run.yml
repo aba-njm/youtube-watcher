@@ -1,4 +1,4 @@
-name: YouTube Auto Downloader
+Name: YouTube Auto Downloader
 
 on:
   schedule:
@@ -43,8 +43,16 @@ jobs:
       run: |
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
+
+        # 1. جلب التحديثات الأخيرة من المستودع
+        git fetch origin main || true
+
+        # 2. دمج المحتوى مع النسخة الموجودة في GitHub وإزالة التكرار
         touch history.txt
+        git show origin/main:history.txt >> history.txt 2>/dev/null || true
+        sort -u history.txt -o history.txt
+
+        # 3. حفظ التغييرات والرفع مع التعامل مع تعارضات الدمج تلقائياً
         git add history.txt
         git commit -m "🤖 تحديث سجل الفيديوهات المحملة تلقائياً [skip ci]" || echo "لا توجد تغييرات للحفظ"
-        git pull origin HEAD --rebase
-        git push
+        git push origin HEAD:main || (git pull origin main --rebase -X ours && git push origin HEAD:main)
