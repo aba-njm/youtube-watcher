@@ -4,6 +4,7 @@ import json
 import time
 import re  # مكتبة الريجكس لاستخراج الأرقام الصافية وتجاوز الإيموجيات
 import urllib.request
+import subprocess  # لتنفيذ أوامر git المباشرة داخل GitHub Actions
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import RPCError
@@ -38,6 +39,28 @@ def save_to_history(video_id):
     with open('history.txt', 'a', encoding='utf-8') as f:
         f.write(video_id + '\n')
 
+def push_history_to_github():
+    """دالة لرفع ملف history.txt فورياً إلى المستودع أثناء عمل السكربت"""
+    try:
+        subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
+        subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
+        subprocess.run(["git", "add", "history.txt"], check=True)
+        
+        commit_res = subprocess.run(
+            ["git", "commit", "-m", "🤖 تحديث فوري لسجل الفيديوهات [skip ci]"],
+            capture_output=True, text=True
+        )
+        
+        if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
+            print("ℹ️ لا توجد تغييرات جديدة لرفعها على GitHub حالياً.")
+            return
+
+        subprocess.run(["git", "pull", "origin", "main", "--rebase", "-X", "ours"], check=False)
+        subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
+        print("🚀 [تحديث فوري] تم حفظ ورفع history.txt بنجاح إلى GitHub!")
+    except Exception as e:
+        print(f"⚠️ تعذر الرفع الفوري إلى GitHub: {e}")
+
 async def send_safe_message(entity, text, parse_mode='html'):
     """دالة مساعدة لإرسال الرسائل وتفادي انهيار السكربت عند خطأ الصلاحيات"""
     if not entity:
@@ -58,7 +81,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بدعم أمر التعديل الفوري للسجل من البوت ('عدل التاريخ الان')...")
+    print("🚀 بدء التشغيل بدعم الرفع الفوري لـ history.txt إلى GitHub أثناء العمل...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -69,7 +92,7 @@ async def main():
         return
 
     downloaded = get_downloaded_links()
-    pending_history = set()  # قائمة مؤقتة للفيديوهات المنفذة قبل كتابتها في السجل
+    pending_history = set()  
 
     with open('channels.txt', 'r', encoding='utf-8') as f:
         channels = [line.strip() for line in f if line.strip()]
@@ -128,6 +151,7 @@ async def main():
 
         if not entries: continue
 
+        # المعالجة من الأحدث إلى الأقدم
         for entry in entries:
             if (time.time() - script_start_time) > MAX_RUN_TIME:
                 time_limit_reached = True
@@ -189,18 +213,18 @@ async def main():
 
                             # 🔘 أمر مباشر فور استلام النص الحرفي "عدل التاريخ الان"
                             if "عدل التاريخ الان" in msg_text:
-                                # إضافة كل ما تم تجهيزه في السجل فوراً
                                 pending_history.add(v_id)
                                 for vid in list(pending_history):
                                     save_to_history(vid)
                                     downloaded.add(vid)
                                 pending_history.clear()
-                                print(f"💾 تم تعديل وحفظ history.txt فوراً بناءً على إشارة البوت!")
+                                # ⚡ الرفع الفوري لمستودع GitHub
+                                push_history_to_github()
 
                             # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
                             if "@botyoutubedownloadbot" in msg_text.lower():
                                 pending_history.add(v_id)
-                                save_to_history(v_id)  # كتابة مباشرة
+                                save_to_history(v_id)
                                 downloaded.add(v_id)
                                 new_videos_found += 1
                                 is_completed = True
