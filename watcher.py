@@ -54,32 +54,6 @@ def save_to_history(video_id):
         for link in sorted_links:
             f.write(link + '\n')
 
-def push_history_to_github():
-    """تنظيف وفرز ورفع history.txt فورياً إلى مستودع GitHub"""
-    try:
-        # 1. التنظيف والفرز الأبجدي أولاً
-        clean_and_sort_history()
-
-        # 2. تنفيذ أوامر الرفع على Git
-        subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
-        subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
-        subprocess.run(["git", "add", "history.txt"], check=True)
-        
-        commit_res = subprocess.run(
-            ["git", "commit", "-m", "🤖 تحديث فوري ومنظم لسجل الفيديوهات [skip ci]"],
-            capture_output=True, text=True
-        )
-        
-        if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
-            print("ℹ️ السجل على GitHub محدث ومفرز سلفاً ولا توجد تغييرات جديدة.")
-            return
-
-        subprocess.run(["git", "pull", "origin", "main", "--rebase", "-X", "ours"], check=False)
-        subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
-        print("🚀 [تحديث فوري] تم تنظيف السجل، فرزه أبجدياً، ورفعه بنجاح إلى GitHub!")
-    except Exception as e:
-        print(f"⚠️ تعذر الرفع الفوري إلى GitHub: {e}")
-
 async def send_safe_message(entity, text, parse_mode='html'):
     """دالة مساعدة لإرسال الرسائل وتفادي انهيار السكربت عند خطأ الصلاحيات"""
     if not entity:
@@ -94,13 +68,73 @@ async def send_safe_message(entity, text, parse_mode='html'):
         print(f"❌ خطأ غير متوقع أثناء الإرسال إلى {entity}: {e}")
     return False
 
+async def push_history_to_github_async():
+    """تنظيف، فرز، ورفع history.txt فورياً إلى GitHub مع إرسال إشعار تلغرام"""
+    try:
+        # 1. التنظيف والفرز المحالي أولاً
+        clean_and_sort_history()
+
+        # 2. إعداد بيانات المستخدم لـ Git
+        subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
+        subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
+
+        # 3. جلب النسخة البعيدة من GitHub ودمج المحتويين لضمان عدم ضياع أي رابط
+        subprocess.run(["git", "fetch", "origin", "main"], check=False)
+        try:
+            remote_history = subprocess.check_output(
+                ["git", "show", "origin/main:history.txt"],
+                stderr=subprocess.DEVNULL, text=True
+            )
+            remote_ids = {line.strip() for line in remote_history.splitlines() if line.strip()}
+            local_ids = get_downloaded_links()
+            all_ids = sorted(list(remote_ids.union(local_ids)))
+            with open('history.txt', 'w', encoding='utf-8') as f:
+                for vid in all_ids:
+                    f.write(vid + '\n')
+        except Exception:
+            pass
+
+        # 4. حفظ التغييرات عمل Commit
+        subprocess.run(["git", "add", "history.txt"], check=True)
+        commit_res = subprocess.run(
+            ["git", "commit", "-m", "🤖 تحديث فوري ومنظم لسجل الفيديوهات [skip ci]"],
+            capture_output=True, text=True
+        )
+
+        if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
+            print("ℹ️ السجل على GitHub محدث ومفرز سلفاً ولا توجد تغييرات جديدة.")
+            await send_safe_message(second_account, "ℹ️ <b>تعديل السجل:</b> لا توجد تغييرات جديدة لرفعها، السجل محدث سلفاً.")
+            return True
+
+        # 5. الرفع المباشر إلى GitHub
+        push_res = subprocess.run(["git", "push", "origin", "HEAD:main"], capture_output=True, text=True)
+        if push_res.returncode == 0:
+            print("🚀 [تحديث فوري] تم تنظيف السجل، فرزه أبجدياً، ورفعه بنجاح إلى GitHub!")
+            await send_safe_message(second_account, "✅ <b>تم تعديل ورفع سجل <code>history.txt</code> بنجاح إلى GitHub!</b>")
+            return True
+        else:
+            # محاولة احتياطية بإجبار الدمج في حال وجود تعارض بسيط
+            subprocess.run(["git", "pull", "origin", "main", "--rebase", "-X", "ours"], check=False)
+            push_retry = subprocess.run(["git", "push", "origin", "HEAD:main"], capture_output=True, text=True)
+            if push_retry.returncode == 0:
+                await send_safe_message(second_account, "✅ <b>تم تعديل ورفع السجل بنجاح إلى GitHub بعد حل التنسيق!</b>")
+                return True
+            else:
+                raise Exception(push_retry.stderr)
+
+    except Exception as e:
+        err_msg = f"⚠️ <b>تعذر الرفع الفوري لسجل history.txt إلى GitHub:</b>\n<code>{str(e)}</code>"
+        print(err_msg)
+        await send_safe_message(second_account, err_msg)
+        return False
+
 async def main():
     await client.start()
 
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بدعم الفرز الأبجدي التلقائي لمنع التكرار والرفع الفوري...")
+    print("🚀 بدء التشغيل بدعم الرفع والدمج المباشر لـ history.txt مع إشعارات التلغرام...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -232,7 +266,7 @@ async def main():
 
                             # 🔘 أمر مباشر فور استلام النص الحرفي "عدل التاريخ الان"
                             if "عدل التاريخ الان" in msg_text:
-                                push_history_to_github()
+                                await push_history_to_github_async()
                                 downloaded = get_downloaded_links()
 
                             # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
