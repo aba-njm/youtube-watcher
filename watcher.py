@@ -31,33 +31,52 @@ second_account = parse_entity(os.environ.get('SECOND_ACCOUNT', ''))
 client = TelegramClient(StringSession(session_string), api_id, api_hash)
 
 def get_downloaded_links():
+    """جلب الروابط المحملة سلفاً بدون تكرار"""
     if not os.path.exists('history.txt'): return set()  
     with open('history.txt', 'r', encoding='utf-8') as f:
         return {line.strip() for line in f if line.strip()}
 
+def clean_and_sort_history():
+    """حذف التكرار وفرز الملف أبجدياً ثم كتابته من جديد"""
+    downloaded_set = get_downloaded_links()
+    sorted_links = sorted(list(downloaded_set))
+    with open('history.txt', 'w', encoding='utf-8') as f:
+        for link in sorted_links:
+            f.write(link + '\n')
+    return downloaded_set
+
 def save_to_history(video_id):
-    with open('history.txt', 'a', encoding='utf-8') as f:
-        f.write(video_id + '\n')
+    """إضافة فيديو جديد وضمان عدم التكرار والفرز الأبجدي المباشر"""
+    downloaded_set = get_downloaded_links()
+    downloaded_set.add(video_id)
+    sorted_links = sorted(list(downloaded_set))
+    with open('history.txt', 'w', encoding='utf-8') as f:
+        for link in sorted_links:
+            f.write(link + '\n')
 
 def push_history_to_github():
-    """دالة لرفع ملف history.txt فورياً إلى المستودع أثناء عمل السكربت"""
+    """تنظيف وفرز ورفع history.txt فورياً إلى مستودع GitHub"""
     try:
+        # 1. التنظيف والفرز الأبجدي أولاً
+        clean_and_sort_history()
+
+        # 2. تنفيذ أوامر الرفع على Git
         subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
         subprocess.run(["git", "add", "history.txt"], check=True)
         
         commit_res = subprocess.run(
-            ["git", "commit", "-m", "🤖 تحديث فوري لسجل الفيديوهات [skip ci]"],
+            ["git", "commit", "-m", "🤖 تحديث فوري ومنظم لسجل الفيديوهات [skip ci]"],
             capture_output=True, text=True
         )
         
         if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
-            print("ℹ️ لا توجد تغييرات جديدة لرفعها على GitHub حالياً.")
+            print("ℹ️ السجل على GitHub محدث ومفرز سلفاً ولا توجد تغييرات جديدة.")
             return
 
         subprocess.run(["git", "pull", "origin", "main", "--rebase", "-X", "ours"], check=False)
         subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
-        print("🚀 [تحديث فوري] تم حفظ ورفع history.txt بنجاح إلى GitHub!")
+        print("🚀 [تحديث فوري] تم تنظيف السجل، فرزه أبجدياً، ورفعه بنجاح إلى GitHub!")
     except Exception as e:
         print(f"⚠️ تعذر الرفع الفوري إلى GitHub: {e}")
 
@@ -81,7 +100,7 @@ async def main():
     script_start_time = time.time()
     MAX_RUN_TIME = 18000  # 5 ساعات
 
-    print("🚀 بدء التشغيل بدعم الرفع الفوري لـ history.txt إلى GitHub أثناء العمل...")
+    print("🚀 بدء التشغيل بدعم الفرز الأبجدي التلقائي لمنع التكرار والرفع الفوري...")
 
     if not youtube_api_key or not target_bot or not second_account:
         print("❌ خطأ حرج: لم يتم العثور على بعض المتغيرات السرية في البيئة!")
@@ -91,8 +110,8 @@ async def main():
         print("❌ خطأ حرج: ملف channels.txt غير موجود!")
         return
 
-    downloaded = get_downloaded_links()
-    pending_history = set()  
+    # تنظيف وتنسيق السجل الحالي عند بدء التشغيل
+    downloaded = clean_and_sort_history()
 
     with open('channels.txt', 'r', encoding='utf-8') as f:
         channels = [line.strip() for line in f if line.strip()]
@@ -162,7 +181,7 @@ async def main():
             v_id = entry['id']
             video_link = entry['link']
 
-            if v_id in downloaded or v_id in pending_history: continue 
+            if v_id in downloaded: continue 
 
             print(f"🔥 [فيديو جديد] معالجة: {entry['title']}")
 
@@ -213,17 +232,11 @@ async def main():
 
                             # 🔘 أمر مباشر فور استلام النص الحرفي "عدل التاريخ الان"
                             if "عدل التاريخ الان" in msg_text:
-                                pending_history.add(v_id)
-                                for vid in list(pending_history):
-                                    save_to_history(vid)
-                                    downloaded.add(vid)
-                                pending_history.clear()
-                                # ⚡ الرفع الفوري لمستودع GitHub
                                 push_history_to_github()
+                                downloaded = get_downloaded_links()
 
                             # 🟢 1. النجاح التام عند وصول حقوق البوت مع الفيديو
                             if "@botyoutubedownloadbot" in msg_text.lower():
-                                pending_history.add(v_id)
                                 save_to_history(v_id)
                                 downloaded.add(v_id)
                                 new_videos_found += 1
@@ -234,7 +247,6 @@ async def main():
 
                             # 🟢 2. كشف البث المباشر (مطابقة دقيقة للإيموجي والنص بالحرف)
                             if "😐" in msg_text and "هذا البث المباشر على وشك أن يبدأ." in msg_text:
-                                pending_history.add(v_id)
                                 save_to_history(v_id)
                                 downloaded.add(v_id)
                                 new_videos_found += 1
@@ -245,7 +257,6 @@ async def main():
 
                             # 🔴 3. استثناء رسالة الحجم الكبير جداً
                             if any(k in msg_text.lower() for k in ["حجمه كبير", "لا يمكن إرساله عبر التلغرام", "كبيرًا جدًا"]):
-                                pending_history.add(v_id)
                                 save_to_history(v_id)
                                 downloaded.add(v_id)
                                 new_videos_found += 1
